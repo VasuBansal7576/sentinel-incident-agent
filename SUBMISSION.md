@@ -4,7 +4,7 @@
 - **Video file location:** `./sentinel-walkthrough.mp4` after recording from `VIDEO_SCRIPT.md`
 - **Video script:** `VIDEO_SCRIPT.md`
 - **Codex traces export path:** `/Users/vasu/.codex/sessions/2026/06/05/rollout-2026-06-05T22-46-23-019e98c9-362b-7813-b539-bca25c6e5745.jsonl`
-- **MEMO confirmation:** `MEMO.md` is present at the repository root and describes the build, cuts, future work, defended design decision, and model-driven tool-selection defense.
+- **MEMO confirmation:** MEMO.md is present at the repository root and describes the build, cuts, future work, defended design decision, and model-driven tool-selection defense.
 
 ## Final Local Proof Commands
 
