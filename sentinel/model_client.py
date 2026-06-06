@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from typing import Protocol
+import json
+import os
+from typing import Any, Protocol
+
+import httpx
 
 from sentinel.models import InvestigationState, StateName, ToolContract
 
@@ -12,12 +16,13 @@ class ModelClient(Protocol):
         state: InvestigationState,
         available_contracts: list[ToolContract],
         objective: str,
+        all_contracts: list[ToolContract] | None = None,
     ) -> list[str]:
         ...
 
 
 class DeterministicIncidentModelClient:
-    """Typed model-client seam used for deterministic evals and tests."""
+    """Typed model client used for deterministic replay and tests."""
 
     def plan_tools(
         self,
@@ -25,6 +30,7 @@ class DeterministicIncidentModelClient:
         state: InvestigationState,
         available_contracts: list[ToolContract],
         objective: str,
+        all_contracts: list[ToolContract] | None = None,
     ) -> list[str]:
         available = {contract.name for contract in available_contracts}
         desired = self._desired_plan(state.current_state, state.trigger_kind)
@@ -88,3 +94,171 @@ class DeterministicIncidentModelClient:
             ],
         }.get(state_name, [])
 
+
+class ModelBackedToolPlanner:
+    def __init__(
+        self,
+        *,
+        model: str | None = None,
+        api_key: str | None = None,
+        http_client: httpx.Client | None = None,
+        deterministic_client: DeterministicIncidentModelClient | None = None,
+        endpoint: str = "https://api.openai.com/v1/responses",
+    ):
+        self.model = model or os.getenv("SENTINEL_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-5.5"
+        self.api_key = api_key if api_key is not None else os.getenv("OPENAI_API_KEY")
+        self.http_client = http_client or httpx.Client(timeout=30.0)
+        self.deterministic_client = deterministic_client or DeterministicIncidentModelClient()
+        self.endpoint = endpoint
+
+    def plan_tools(
+        self,
+        *,
+        state: InvestigationState,
+        available_contracts: list[ToolContract],
+        objective: str,
+        all_contracts: list[ToolContract] | None = None,
+    ) -> list[str]:
+        if not self.api_key:
+            return self._deterministic_plan(
+                state=state,
+                available_contracts=available_contracts,
+                objective=objective,
+                all_contracts=all_contracts,
+            )
+
+        available_names = {contract.name for contract in available_contracts}
+        try:
+            response = self.http_client.post(
+                self.endpoint,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=self._request_body(
+                    state=state,
+                    objective=objective,
+                    available_contracts=available_contracts,
+                    all_contracts=all_contracts or available_contracts,
+                ),
+            )
+            response.raise_for_status()
+            selected = _extract_tool_names(response.json())
+        except Exception:
+            return self._deterministic_plan(
+                state=state,
+                available_contracts=available_contracts,
+                objective=objective,
+                all_contracts=all_contracts,
+            )
+
+        planned = [name for name in selected if name in available_names]
+        if planned:
+            return planned
+        return self._deterministic_plan(
+            state=state,
+            available_contracts=available_contracts,
+            objective=objective,
+            all_contracts=all_contracts,
+        )
+
+    def _deterministic_plan(
+        self,
+        *,
+        state: InvestigationState,
+        available_contracts: list[ToolContract],
+        objective: str,
+        all_contracts: list[ToolContract] | None,
+    ) -> list[str]:
+        return self.deterministic_client.plan_tools(
+            state=state,
+            available_contracts=available_contracts,
+            objective=objective,
+            all_contracts=all_contracts,
+        )
+
+    def _request_body(
+        self,
+        *,
+        state: InvestigationState,
+        objective: str,
+        available_contracts: list[ToolContract],
+        all_contracts: list[ToolContract],
+    ) -> dict[str, Any]:
+        tool_schemas = [_tool_schema(contract) for contract in all_contracts]
+        eligible_tool_names = [contract.name for contract in available_contracts]
+        planner_input = {
+            "objective": objective,
+            "current_state": state.current_state.value,
+            "trigger_kind": state.trigger_kind,
+            "incident_id": state.incident_id,
+            "affected_services": state.affected_services,
+            "service_priority": state.service_priority,
+            "context_summary": state.context_summary,
+            "evidence_count": len(state.evidence),
+            "tool_schemas": tool_schemas,
+            "eligible_tool_names": eligible_tool_names,
+        }
+        return {
+            "model": self.model,
+            "input": [
+                {
+                    "role": "system",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": (
+                                "You are SENTINEL's incident planner. Select the next tool calls "
+                                "from eligible_tool_names only. Return strict JSON with one key: "
+                                "tools, an ordered list of tool names. Do not invent tools."
+                            ),
+                        }
+                    ],
+                },
+                {
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": json.dumps(planner_input)}],
+                },
+            ],
+            "text": {"format": {"type": "json_object"}},
+        }
+
+
+def _tool_schema(contract: ToolContract) -> dict[str, Any]:
+    return {
+        "name": contract.name,
+        "namespace": contract.namespace.value,
+        "permission": contract.permission.value,
+        "description": contract.description,
+        "input_schema": contract.input_schema,
+        "output_schema": contract.output_schema,
+        "phase_allowlist": [state.value for state in contract.phase_allowlist],
+    }
+
+
+def _extract_tool_names(payload: dict[str, Any]) -> list[str]:
+    raw_text = _response_text(payload)
+    if not raw_text:
+        return []
+    try:
+        parsed = json.loads(raw_text)
+    except json.JSONDecodeError:
+        return []
+    tools = parsed.get("tools")
+    if not isinstance(tools, list):
+        return []
+    return [tool for tool in tools if isinstance(tool, str)]
+
+
+def _response_text(payload: dict[str, Any]) -> str:
+    output_text = payload.get("output_text")
+    if isinstance(output_text, str):
+        return output_text
+    chunks: list[str] = []
+    for item in payload.get("output", []):
+        if not isinstance(item, dict):
+            continue
+        for content in item.get("content", []):
+            if isinstance(content, dict) and isinstance(content.get("text"), str):
+                chunks.append(content["text"])
+    return "".join(chunks)

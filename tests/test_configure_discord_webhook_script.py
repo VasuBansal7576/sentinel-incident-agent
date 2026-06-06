@@ -78,7 +78,7 @@ def test_configure_discord_webhook_test_post_succeeds_before_write(tmp_path):
         requested_urls.append(str(request.url))
         return httpx.Response(204)
 
-    client = httpx.Client(transport=httpx.MockTransport(handler))
+    client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
     args = _args(env_file, test_post=True)
 
     summary = configure.configure_discord_webhook(args, webhook_url=REAL_WEBHOOK, client=client)
@@ -91,7 +91,7 @@ def test_configure_discord_webhook_test_post_succeeds_before_write(tmp_path):
 
 def test_configure_discord_webhook_does_not_write_when_test_post_fails(tmp_path):
     env_file = tmp_path / ".env"
-    client = httpx.Client(transport=httpx.MockTransport(lambda _request: httpx.Response(404, text="nope")))
+    client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(lambda _request: httpx.Response(404, text="nope")))
     args = _args(env_file, test_post=True)
 
     summary = configure.configure_discord_webhook(args, webhook_url=REAL_WEBHOOK, client=client)

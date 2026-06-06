@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_http_live_demo_posts_to_deployed_receiver_and_requires_slack_notification():
     demo = _load_demo_script()
-    client = _FakeHttpDemoClient(
+    client = _StubHttpDemoClient(
         ready={"ready": True},
         connectivity={"ready": True, "missing_live_credentials": [], "checks": []},
         status={
@@ -84,7 +84,7 @@ def test_http_live_demo_posts_to_deployed_receiver_and_requires_slack_notificati
 
 def test_http_live_demo_rejects_invalid_receiver_base_url_before_preflight_or_webhook():
     demo = _load_demo_script()
-    client = _FakeHttpDemoClient(
+    client = _StubHttpDemoClient(
         ready={"ready": True},
         connectivity={"ready": True, "missing_live_credentials": [], "checks": []},
         status={},
@@ -110,7 +110,7 @@ def test_http_live_demo_rejects_invalid_receiver_base_url_before_preflight_or_we
 
 def test_http_live_demo_stops_before_webhook_when_deployed_receiver_not_ready():
     demo = _load_demo_script()
-    client = _FakeHttpDemoClient(
+    client = _StubHttpDemoClient(
         ready={
             "ready": False,
             "missing_live_credentials": ["SLACK_BOT_TOKEN"],
@@ -138,7 +138,7 @@ def test_http_live_demo_stops_before_webhook_when_deployed_receiver_not_ready():
 
 def test_http_live_demo_stops_before_webhook_when_connectivity_preflight_fails():
     demo = _load_demo_script()
-    client = _FakeHttpDemoClient(
+    client = _StubHttpDemoClient(
         ready={"ready": True},
         connectivity={
             "ready": False,
@@ -183,7 +183,7 @@ def test_http_live_demo_stops_before_webhook_when_connectivity_preflight_fails()
 
 def test_http_live_demo_reports_connectivity_auth_failure():
     demo = _load_demo_script()
-    client = _FakeHttpDemoClient(
+    client = _StubHttpDemoClient(
         ready={"ready": True},
         connectivity={"detail": "Invalid SENTINEL API token"},
         connectivity_status_code=401,
@@ -214,7 +214,7 @@ def test_http_live_demo_reports_connectivity_auth_failure():
 
 def test_http_live_demo_stops_before_webhook_when_ready_success_body_is_malformed():
     demo = _load_demo_script()
-    client = _FakeHttpDemoClient(
+    client = _StubHttpDemoClient(
         ready={"status": "ok"},
         status={},
     )
@@ -243,7 +243,7 @@ def test_http_live_demo_stops_before_webhook_when_ready_success_body_is_malforme
 
 def test_http_live_demo_stops_before_webhook_when_connectivity_success_body_is_malformed():
     demo = _load_demo_script()
-    client = _FakeHttpDemoClient(
+    client = _StubHttpDemoClient(
         ready={"ready": True},
         connectivity={"status": "ok"},
         status={},
@@ -290,7 +290,7 @@ def test_inprocess_live_demo_reports_missing_credentials_with_preflight_checks(m
     monkeypatch.setattr(
         demo,
         "run_live_connectivity_checks",
-        lambda _settings, store=None: _FakeConnectivityReport(
+        lambda _settings, store=None: _StubConnectivityReport(
             ready=False,
             missing_live_credentials=["DD_API_KEY"],
             checks=checks,
@@ -329,7 +329,7 @@ def test_inprocess_live_demo_stops_before_webhook_when_preflight_not_ready(monke
     monkeypatch.setattr(
         demo,
         "run_live_connectivity_checks",
-        lambda _settings, store=None: _FakeConnectivityReport(
+        lambda _settings, store=None: _StubConnectivityReport(
             ready=False,
             missing_live_credentials=[],
             checks=checks,
@@ -354,7 +354,7 @@ def test_inprocess_live_demo_stops_before_webhook_when_preflight_not_ready(monke
 
 def test_http_live_demo_reports_structured_poll_failure():
     demo = _load_demo_script()
-    client = _FakeHttpDemoClient(
+    client = _StubHttpDemoClient(
         ready={"ready": True},
         status={"detail": "missing auth"},
         status_status_code=401,
@@ -384,7 +384,7 @@ def test_http_live_demo_reports_structured_poll_failure():
 
 def test_http_live_demo_reports_structured_timeout():
     demo = _load_demo_script()
-    client = _FakeHttpDemoClient(
+    client = _StubHttpDemoClient(
         ready={"ready": True},
         status={
             "investigation_id": "inv-remote",
@@ -418,7 +418,7 @@ def test_http_live_demo_reports_structured_timeout():
 
 def test_http_live_demo_reports_malformed_poll_payload_as_structured_failure():
     demo = _load_demo_script()
-    client = _FakeHttpDemoClient(
+    client = _StubHttpDemoClient(
         ready={"ready": True},
         status={"investigation_id": "inv-remote"},
     )
@@ -815,7 +815,7 @@ def _tool_proofs():
     }
 
 
-class _FakeConnectivityReport:
+class _StubConnectivityReport:
     def __init__(self, *, ready: bool, missing_live_credentials: list[str], checks: list[dict]):
         self.ready = ready
         self.missing_live_credentials = missing_live_credentials
@@ -839,7 +839,7 @@ class _Response:
         return self._body
 
 
-class _FakeHttpDemoClient:
+class _StubHttpDemoClient:
     def __init__(
         self,
         *,

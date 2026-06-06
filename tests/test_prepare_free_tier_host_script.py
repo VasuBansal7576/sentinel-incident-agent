@@ -122,14 +122,14 @@ def test_prepare_host_ready_when_expected_context_and_cluster_exist(monkeypatch)
         lambda name: f"/usr/local/bin/{name}",
     )
 
-    def fake_status(command, **_kwargs):
+    def stub_status(command, **_kwargs):
         if command[:2] == ["/usr/local/bin/kind", "get"]:
             return {"passed": True, "status": "ok", "stdout": "sentinel-free-tier"}
         if command[:3] == ["/usr/local/bin/kubectl", "config", "current-context"]:
             return {"passed": True, "status": "ok", "stdout": "kind-sentinel-free-tier"}
         return {"passed": True, "status": "ok", "stdout": "ok"}
 
-    monkeypatch.setattr(prepare, "_command_status", fake_status)
+    monkeypatch.setattr(prepare, "_command_status", stub_status)
 
     summary = prepare.prepare_host(args)
 

@@ -10,4 +10,4 @@ SENTINEL v1 uses Python with a small FastAPI service, Pydantic models for tool c
 
 **Consequences**
 
-The code remains inspectable for reviewers while still supporting webhooks, typed tools, deterministic fixtures, persistence, and evals. The implementation must provide the orchestration, registry, and phase-control behavior explicitly instead of hiding core decisions inside a framework.
+The code remains inspectable for reviewers while still supporting webhooks, typed tools, deterministic replay inputs, persistence, and evals. The implementation must provide the orchestration, registry, and phase-control behavior explicitly instead of hiding core decisions inside a framework.

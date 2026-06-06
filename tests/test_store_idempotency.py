@@ -53,8 +53,8 @@ def test_sqlite_store_trims_oauth_provider_and_token(tmp_path):
 
 def test_postgres_store_treats_unique_violation_as_duplicate_idempotency_key():
     store = object.__new__(PostgresInvestigationStore)
-    store.psycopg = _FakePsycopg
-    store._conn = _FailingConnection(_FakeUniqueViolation("duplicate key"))
+    store.psycopg = _StubPsycopg
+    store._conn = _FailingConnection(_StubUniqueViolation("duplicate key"))
     store._lock = _RecordingLock()
 
     result = store.remember_idempotency_key("PD-1:webhook", "webhook", "inv-1")
@@ -67,7 +67,7 @@ def test_postgres_store_treats_unique_violation_as_duplicate_idempotency_key():
 
 def test_postgres_store_reraises_non_duplicate_idempotency_failures():
     store = object.__new__(PostgresInvestigationStore)
-    store.psycopg = _FakePsycopg
+    store.psycopg = _StubPsycopg
     store._conn = _FailingConnection(RuntimeError("database is unavailable"))
     store._lock = _RecordingLock()
 
@@ -81,7 +81,7 @@ def test_postgres_store_reraises_non_duplicate_idempotency_failures():
 
 def test_postgres_store_serializes_successful_idempotency_insert_with_lock():
     store = object.__new__(PostgresInvestigationStore)
-    store.psycopg = _FakePsycopg
+    store.psycopg = _StubPsycopg
     store._conn = _SuccessfulConnection()
     store._lock = _RecordingLock()
 
@@ -126,16 +126,16 @@ def test_postgres_store_rejects_malformed_oauth_metadata_before_query():
     assert store._lock.events == []
 
 
-class _FakeUniqueViolation(Exception):
+class _StubUniqueViolation(Exception):
     pass
 
 
-class _FakeErrors:
-    UniqueViolation = _FakeUniqueViolation
+class _StubErrors:
+    UniqueViolation = _StubUniqueViolation
 
 
-class _FakePsycopg:
-    errors = _FakeErrors
+class _StubPsycopg:
+    errors = _StubErrors
 
 
 class _FailingConnection:

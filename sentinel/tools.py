@@ -19,7 +19,7 @@ from sentinel.models import (
     ToolNamespace,
     ToolResult,
 )
-from sentinel.simulated import SimulatedIncidentEnvironment
+from sentinel.replay import ReplayIncidentEnvironment
 from sentinel.store import SQLiteInvestigationStore
 
 
@@ -59,7 +59,7 @@ REPO_TOOLS = [
 
 INFRA_TOOLS = [
     "rollback_deployment",
-    "restart_service",
+    "spawn_service_investigator",
     "scale_replicas",
     "toggle_feature_flag",
     "add_database_index",
@@ -119,11 +119,11 @@ class ToolExecutionContext:
     subagent_context_id: str | None = None
 
 
-class SimulatedTool:
+class ReplayTool:
     def __init__(
         self,
         contract: ToolContract,
-        environment: SimulatedIncidentEnvironment,
+        environment: ReplayIncidentEnvironment,
         *,
         max_attempts: int = 3,
         base_delay_seconds: float = 0.001,
@@ -192,7 +192,7 @@ class SimulatedTool:
 
 
 class ToolRegistry:
-    def __init__(self, contracts: Iterable[ToolContract], tools: dict[str, SimulatedTool]):
+    def __init__(self, contracts: Iterable[ToolContract], tools: dict[str, ReplayTool]):
         self.contracts = {contract.name: contract for contract in contracts}
         self.tools = tools
 
@@ -231,15 +231,15 @@ class ToolRegistry:
 
 
 class ToolFactory:
-    """Factory for 52 simulated tool adapters from declarative contracts."""
+    """Factory for 52 deterministic replay tool adapters from declarative contracts."""
 
-    def __init__(self, environment: SimulatedIncidentEnvironment):
+    def __init__(self, environment: ReplayIncidentEnvironment):
         self.environment = environment
 
     def build_registry(self) -> ToolRegistry:
         contracts = build_tool_contracts()
         tools = {
-            contract.name: SimulatedTool(contract, self.environment)
+            contract.name: ReplayTool(contract, self.environment)
             for contract in contracts
         }
         return ToolRegistry(contracts, tools)
@@ -356,11 +356,11 @@ class ToolExecutor:
         )
 
 
-def build_default_registry(environment: SimulatedIncidentEnvironment | None = None) -> ToolRegistry:
+def build_default_registry(environment: ReplayIncidentEnvironment | None = None) -> ToolRegistry:
     from sentinel.scenarios import build_scenarios
 
     if environment is None:
-        environment = SimulatedIncidentEnvironment(build_scenarios()["golden_path"])
+        environment = ReplayIncidentEnvironment(build_scenarios()["golden_path"])
     return ToolFactory(environment).build_registry()
 
 
@@ -387,6 +387,23 @@ def build_tool_contracts() -> list[ToolContract]:
             )
         )
     for short_name in INFRA_TOOLS:
+        if short_name == "spawn_service_investigator":
+            contracts.append(
+                _contract(
+                    ToolNamespace.INFRA,
+                    short_name,
+                    PermissionClass.READ_ONLY,
+                    [StateName.SERVICE_INVESTIGATION],
+                    "Spawn an isolated Service Investigator and return its typed report.",
+                    input_schema={"service_name": "string", "objective": "string"},
+                    output_schema={
+                        "service_report": "ServiceIncidentReport",
+                        "evidence": "list[Evidence]",
+                        "reasoning_trace": "string",
+                    },
+                )
+            )
+            continue
         contracts.append(
             _contract(
                 ToolNamespace.INFRA,
@@ -419,6 +436,8 @@ def _contract(
     permission: PermissionClass,
     phase_allowlist: list[StateName],
     description: str,
+    input_schema: dict[str, str] | None = None,
+    output_schema: dict[str, str] | None = None,
 ) -> ToolContract:
     name = f"{namespace.value}.{short_name}"
     return ToolContract(
@@ -426,8 +445,8 @@ def _contract(
         namespace=namespace,
         permission=permission,
         description=description,
-        input_schema={"service": "string", "time_window": "string"},
-        output_schema={
+        input_schema=input_schema or {"service": "string", "time_window": "string"},
+        output_schema=output_schema or {
             "observation": "string",
             "evidence": "list[Evidence]",
             "reasoning_trace": "string",
@@ -468,6 +487,7 @@ _TOOL_REASONING_PURPOSES = {
     "repo.get_rollback_targets": "find the latest known-good target before asking for approval",
     "repo.read_ci_pipeline_status": "confirm CI health and whether query-plan coverage existed",
     "repo.read_deployment_config": "confirm the service can be rolled back through the standard controller",
+    "infra.spawn_service_investigator": "spawn an isolated Service Investigator with scoped read-only tools",
     "infra.rollback_deployment": "execute only the human-approved rollback target",
     "infra.add_database_index": "execute only the human-approved SQLite index migration",
     "comms.write_post_mortem": "turn collected evidence into a factual incident record",

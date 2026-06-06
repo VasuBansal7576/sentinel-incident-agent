@@ -2,6 +2,9 @@
 .env.*
 !.env.example
 .sentinel/
+.submission/
+codex-traces-native*.jsonl
+codex-traces-unedited*.jsonl
 __pycache__/
 .pytest_cache/
 *.pyc

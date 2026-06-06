@@ -54,7 +54,7 @@ get_commit_author
 read_deployment_config
 infra.* — taking action (12 tools)
 rollback_deployment
-restart_service
+spawn_service_investigator
 scale_replicas
 toggle_feature_flag
 add_database_index

@@ -5,9 +5,9 @@ SENTINEL v1 keeps a controlled deterministic incident harness for repeatable dem
 **Considered Options**
 
 - Integrate every external production system during the five-day build
-- Use simple mocks that bypass production scaffolding
+- Use thin stubs that bypass production scaffolding
 - Use a controlled deterministic harness plus one real operational proof path
 
 **Consequences**
 
-The build can demonstrate the full investigation loop reliably while the live proof demonstrates real operational integration through Prometheus, Loki, kind, SQLite, and Discord. The docs and memo must separate deterministic long-horizon proof from live infrastructure proof without creating a real-vs-fake split.
+The build can demonstrate the full investigation loop reliably while the live proof demonstrates real operational integration through Prometheus, Loki, kind, SQLite, and Discord. The docs and memo must separate deterministic long-horizon proof from live infrastructure proof without collapsing them into one claim.

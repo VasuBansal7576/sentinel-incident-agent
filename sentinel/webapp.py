@@ -1207,6 +1207,7 @@ def _build_live_orchestrator(settings: SentinelSettings, store) -> tuple[Sentine
     from sentinel.subagents import SubagentLauncher
 
     orchestrator.subagents = SubagentLauncher(registry, orchestrator.executor, store)
+    orchestrator.subagents.bind_spawn_tool()
     return orchestrator, clients
 
 

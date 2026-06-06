@@ -50,7 +50,7 @@ _Avoid_: Audit payload, safe data
 
 **Incident Scenario**:
 A controlled incident narrative with source material, expected evidence, expected diagnosis, and expected response constraints.
-_Avoid_: Test case, mock incident
+_Avoid_: Test case, replay incident
 
 **Golden Path Scenario**:
 The primary **Incident Scenario** used to demonstrate SENTINEL's core investigation, approval, remediation, audit, and post-mortem workflow.
@@ -68,9 +68,9 @@ _Avoid_: Scenario backlog, demo list
 The expected truth for an **Incident Scenario**, including evidence, diagnosis, confidence, allowed actions, forbidden actions, evidence gaps, and post-mortem facts.
 _Avoid_: Expected answer, golden output
 
-**Simulated Incident Environment**:
+**Replay Incident Environment**:
 A controlled environment that supplies **Source Material** and accepts approved remediation-like actions for **Incident Scenarios**.
-_Avoid_: Mock integration, fake production
+_Avoid_: replay integration, production claim
 
 **Evidence**:
 A bounded observation derived from **Source Material** with source, time window, affected service, claim, and provenance.
@@ -254,11 +254,11 @@ _Avoid_: Module, package
 
 **Tool Contract**:
 The declared interface, permission, execution policy, error behavior, and output role a registered tool must satisfy.
-_Avoid_: Implementation, mock
+_Avoid_: Implementation, replay shortcut
 
-**Simulated Adapter**:
-A v1 tool implementation that satisfies a **Tool Contract** against the **Simulated Incident Environment** instead of a production integration.
-_Avoid_: Fake tool, stub
+**Replay Adapter**:
+A v1 tool implementation that satisfies a **Tool Contract** against the **Replay Incident Environment** instead of a production integration.
+_Avoid_: Shortcut tool, placeholder
 
 **Phase Tool Set**:
 The phase-specific subset of the **Tool Registry** available to a model or subagent during the current **Investigation Phase**.
@@ -309,7 +309,7 @@ _Avoid_: Update, announcement
 - The v1 **Evaluation Scenario Set** contains the **Golden Path Scenario**, one tool-degraded **Incident Scenario**, and one **Watch** scenario.
 - Each **Incident Scenario** has exactly one **Scenario Oracle**.
 - An **Incident Evaluation** assesses one SENTINEL run against one **Incident Scenario**.
-- A **Simulated Incident Environment** supplies **Source Material** for **Incident Scenarios**.
+- A **Replay Incident Environment** supplies **Source Material** for **Incident Scenarios**.
 - An **Investigation** produces zero or more **Audit Events**.
 - An **Audit Event** may reference **Source Material** or **Sensitive Source Material** by hash or durable reference.
 - An **Audit Event** may cite derived **Evidence**, an **Approval Request**, or a **Remediation Result**.
@@ -362,8 +362,8 @@ _Avoid_: Update, announcement
 - The **Golden Path Scenario** proposes the missing-index **Long-Term Correction** as a **Proposed Action Item** for the payment **Service Owner**.
 - The **Tool Registry** groups model-callable tools into `observe.*`, `repo.*`, `infra.*`, and `comms.*` **Tool Namespaces**.
 - The **Tool Registry** contains 52 model-callable **Tool Contracts** in v1.
-- A **Tool Contract** may be implemented by a **Simulated Adapter** in v1.
-- A **Simulated Adapter** must satisfy the same schema, permission, retry, rate-limit, error, audit, and output-role expectations as a production integration.
+- A **Tool Contract** may be implemented by a **Replay Adapter** in v1.
+- A **Replay Adapter** must satisfy the same schema, permission, retry, rate-limit, error, audit, and output-role expectations as a production integration.
 - A tool belongs to exactly one **Tool Permission Class**.
 - The **Tool Registry** defines the available tools and their invocation constraints.
 - A **Phase Tool Set** is derived from the **Tool Registry** using the current **Investigation Phase**, actor, scope, **Tool Permission Class**, and **Investigation State**.
@@ -414,14 +414,14 @@ _Avoid_: Update, announcement
 - "Retry" was initially treated as an execution detail; resolved: duplicate triggers, approvals, and remediation executions are recognized by **Idempotency Keys**.
 - "50+ tools" was initially framed as a list; resolved: SENTINEL uses a **Tool Registry** rather than a hand-written dispatcher.
 - "Tool namespace" was broad enough to include platform internals; resolved: v1 model-callable tools use the `observe.*`, `repo.*`, `infra.*`, and `comms.*` **Tool Namespaces** only.
-- "Simulated tool" was broad enough to imply a fake or padded tool; resolved: v1 uses **Simulated Adapters** that satisfy real **Tool Contracts**.
+- "Replay-only tool" was broad enough to imply a replay-only or padded tool; resolved: v1 uses **Replay Adapters** that satisfy real **Tool Contracts**.
 - "Golden Path tool usage" was broad enough to imply all 52 tools should be called; resolved: the **Golden Path Scenario** demonstrates depth with a representative subset while the remaining **Tool Contracts** are validated separately.
 - "Tool access" was broad enough to imply every registered tool is visible in every phase; resolved: the model chooses from a **Phase Tool Set** derived from the **Tool Registry**.
 - "Invalid tool call" was broad enough to imply silent dropping or automatic substitution; resolved: invalid tool requests produce a **Tool Access Denial**.
 - "Composable tools" was initially broad enough to mean sequential text summaries; resolved: a **Composable Tool Chain** passes structured **Tool Results** as typed inputs to later tools.
 - "Tool failure" was initially easy to hide as executor noise; resolved: material failures become **Tool Failures** and may create **Evidence Gaps** that affect confidence.
 - "Malformed structured output" was broad enough to imply best-effort parsing; resolved: invalid model responses become **Model Output Failures** and are not guessed into shape.
-- "Integration" was initially broad enough to imply full production SaaS connectivity; resolved: v1 may use a **Simulated Incident Environment** for controlled incident scenarios while preserving production-shaped tool contracts.
+- "Integration" was initially broad enough to imply full production SaaS connectivity; resolved: v1 may use a **Replay Incident Environment** for controlled incident scenarios while preserving production-shaped tool contracts.
 - "Eval" was initially broad enough to mean final-answer grading; resolved: an **Incident Evaluation** scores the investigation path, evidence quality, diagnosis, approval gating, remediation safety, and documentation.
 - "Eval breadth" was broad enough to imply many shallow scenarios; resolved: the v1 **Evaluation Scenario Set** contains three focused scenarios.
 - "Expected answer" was broad enough to imply exact final wording; resolved: a **Scenario Oracle** defines expected truth and safety constraints without requiring identical prose.

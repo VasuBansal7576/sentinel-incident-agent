@@ -108,7 +108,7 @@ def test_webapp_ready_reports_missing_live_credentials():
 
 
 def test_webapp_metrics_endpoint_exposes_prometheus_demo_series():
-    app = create_app(_fake_live_settings(default_service="checkout-service"))
+    app = create_app(_stub_live_settings(default_service="checkout-service"))
 
     response = TestClient(app).get("/metrics")
 
@@ -154,7 +154,7 @@ def test_webapp_live_connectivity_endpoint_reports_missing_without_network_in_de
 
 
 def test_operator_endpoint_requires_bearer_token_in_production():
-    app = create_app(_fake_live_settings(api_token="sentinel-api-token"))
+    app = create_app(_stub_live_settings(api_token="sentinel-api-token"))
     state = _waiting_approval_state()
     app.state.store.save_state(state)
     client = TestClient(app)
@@ -172,7 +172,7 @@ def test_operator_endpoint_requires_bearer_token_in_production():
 
 
 def test_operator_endpoint_allows_development_without_configured_token():
-    app = create_app(_fake_live_settings(api_token=None, environment="development"))
+    app = create_app(_stub_live_settings(api_token=None, environment="development"))
     state = _waiting_approval_state()
     app.state.store.save_state(state)
 
@@ -184,7 +184,7 @@ def test_operator_endpoint_allows_development_without_configured_token():
 
 def test_oauth_install_endpoints_require_operator_token_before_issuing_state():
     app = create_app(
-        _fake_live_settings(
+        _stub_live_settings(
             slack_client_id="slack-client",
             slack_client_secret="slack-secret",
             slack_redirect_uri="http://localhost/slack",
@@ -253,7 +253,7 @@ def test_oauth_install_rejects_missing_provider_config_before_issuing_state():
     ]
 
     for path, overrides, missing_name in cases:
-        app = create_app(_fake_live_settings(**overrides))
+        app = create_app(_stub_live_settings(**overrides))
 
         response = TestClient(app).get(path, headers=_api_headers(), follow_redirects=False)
 
@@ -269,7 +269,7 @@ def test_oauth_install_rejects_store_construction_failure_with_503(monkeypatch):
         )
 
     monkeypatch.setattr("sentinel.webapp.build_store", fail_store)
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         database_url="postgresql://sentinel:db-secret@db/sentinel",
         slack_client_id="slack-client",
         slack_client_secret="slack-secret",
@@ -298,7 +298,7 @@ def test_oauth_callback_rejects_state_that_was_not_issued_by_receiver(monkeypatc
         return {"access_token": "xoxb-oauth", "team": {"id": "T1"}}
 
     monkeypatch.setattr("sentinel.oauth.OAuthManager.exchange_slack_code", no_network_exchange)
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         slack_client_id="slack-client",
         slack_client_secret="slack-secret",
         slack_redirect_uri="http://localhost/slack",
@@ -328,7 +328,7 @@ def test_oauth_callback_consumes_issued_state_once_before_saving_token(monkeypat
         }
 
     monkeypatch.setattr("sentinel.oauth.OAuthManager.exchange_slack_code", no_network_exchange)
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         slack_client_id="slack-client",
         slack_client_secret="slack-secret",
         slack_redirect_uri="http://localhost/slack",
@@ -359,7 +359,7 @@ def test_oauth_callback_rejects_malformed_token_payload_without_persisting(monke
         return {"ok": True, "team": {"id": "T1", "name": "Sentinel"}}
 
     monkeypatch.setattr("sentinel.oauth.OAuthManager.exchange_slack_code", malformed_exchange)
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         slack_client_id="slack-client",
         slack_client_secret="slack-secret",
         slack_redirect_uri="http://localhost/slack",
@@ -393,7 +393,7 @@ def test_datadog_oauth_callback_consumes_issued_state_once_before_saving_token(m
         }
 
     monkeypatch.setattr("sentinel.oauth.OAuthManager.exchange_datadog_code", no_network_exchange)
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         datadog_api_key=None,
         datadog_app_key=None,
         datadog_oauth_token=None,
@@ -437,7 +437,7 @@ def test_datadog_oauth_callback_rejects_malformed_token_payload_without_persisti
         return {"token_type": "bearer", "domain": domain or "datadoghq.com"}
 
     monkeypatch.setattr("sentinel.oauth.OAuthManager.exchange_datadog_code", malformed_exchange)
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         datadog_api_key=None,
         datadog_app_key=None,
         datadog_oauth_token=None,
@@ -466,7 +466,7 @@ def test_datadog_oauth_callback_rejects_malformed_token_payload_without_persisti
 def test_run_live_investigation_closes_provider_clients(monkeypatch):
     closed = []
 
-    class FakeOrchestrator:
+    class StubOrchestrator:
         def run_live_incident(self, **kwargs):
             return InvestigationState(
                 incident_id=kwargs["incident_id"],
@@ -475,21 +475,21 @@ def test_run_live_investigation_closes_provider_clients(monkeypatch):
                 service_priority=kwargs["affected_services"],
             )
 
-    class FakeClients:
+    class StubClients:
         def close(self):
             closed.append(True)
 
     monkeypatch.setattr(
         "sentinel.webapp._build_live_orchestrator",
-        lambda settings, store: (FakeOrchestrator(), FakeClients()),
+        lambda settings, store: (StubOrchestrator(), StubClients()),
     )
 
     state = _run_live_investigation(
-        _fake_live_settings(),
+        _stub_live_settings(),
         {},
         "PD-LIVE-CLOSE",
         services=["checkout-service"],
-        store=create_app(_fake_live_settings()).state.store,
+        store=create_app(_stub_live_settings()).state.store,
     )
 
     assert state.incident_id == "PD-LIVE-CLOSE"
@@ -525,7 +525,7 @@ def test_safe_live_investigation_failure_redacts_persisted_error(monkeypatch):
         )
 
     monkeypatch.setattr("sentinel.webapp._run_live_investigation", fail_live_investigation)
-    settings = _fake_live_settings()
+    settings = _stub_live_settings()
     app = create_app(settings)
     store = app.state.store
 
@@ -561,7 +561,7 @@ def test_safe_live_investigation_failure_redacts_persisted_error(monkeypatch):
 
 
 def test_ready_rejects_nonexistent_kubeconfig_path():
-    settings = _fake_live_settings(kubeconfig="/tmp/sentinel-missing-kubeconfig")
+    settings = _stub_live_settings(kubeconfig="/tmp/sentinel-missing-kubeconfig")
 
     response = TestClient(create_app(settings)).get("/ready")
 
@@ -573,7 +573,7 @@ def test_ready_rejects_nonexistent_kubeconfig_path():
 
 
 def test_ready_reports_datadog_api_key_auth_mode():
-    response = TestClient(create_app(_fake_live_settings())).get("/ready")
+    response = TestClient(create_app(_stub_live_settings())).get("/ready")
 
     assert response.status_code == 200
     body = response.json()
@@ -582,7 +582,7 @@ def test_ready_reports_datadog_api_key_auth_mode():
 
 
 def test_ready_accepts_datadog_github_and_slack_tokens_from_oauth_store():
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         datadog_api_key=None,
         datadog_app_key=None,
         datadog_oauth_token=None,
@@ -621,7 +621,7 @@ def test_ready_accepts_datadog_github_and_slack_tokens_from_oauth_store():
 
 
 def test_ready_rejects_datadog_oauth_store_with_insufficient_explicit_scopes():
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         datadog_api_key=None,
         datadog_app_key=None,
         datadog_oauth_token=None,
@@ -646,7 +646,7 @@ def test_ready_rejects_datadog_oauth_store_with_insufficient_explicit_scopes():
 
 
 def test_ready_rejects_github_oauth_store_with_insufficient_explicit_scopes():
-    settings = _fake_live_settings(github_token=None)
+    settings = _stub_live_settings(github_token=None)
     app = create_app(settings)
     app.state.store.save_oauth_token(
         provider="github",
@@ -664,7 +664,7 @@ def test_ready_rejects_github_oauth_store_with_insufficient_explicit_scopes():
 
 
 def test_ready_rejects_slack_oauth_store_with_insufficient_explicit_scopes():
-    settings = _fake_live_settings(slack_bot_token=None)
+    settings = _stub_live_settings(slack_bot_token=None)
     app = create_app(settings)
     app.state.store.save_oauth_token(
         provider="slack",
@@ -686,7 +686,7 @@ def test_ready_rejects_slack_oauth_store_with_insufficient_explicit_scopes():
 
 
 def test_live_orchestrator_build_uses_stored_oauth_tokens_for_provider_clients():
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         datadog_api_key=None,
         datadog_app_key=None,
         datadog_oauth_token=None,
@@ -714,7 +714,7 @@ def test_live_orchestrator_build_uses_stored_oauth_tokens_for_provider_clients()
 
 
 def test_ready_rejects_expired_stored_datadog_oauth_without_refresh_config():
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         datadog_api_key=None,
         datadog_app_key=None,
         datadog_oauth_token=None,
@@ -753,7 +753,7 @@ def test_pagerduty_webhook_preserves_stored_datadog_oauth_for_live_refresh(monke
         captured.append(settings)
 
     monkeypatch.setattr("sentinel.webapp._run_live_investigation_safely", no_live_network)
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         datadog_api_key=None,
         datadog_app_key=None,
         datadog_oauth_token=None,
@@ -798,7 +798,7 @@ def test_ready_rejects_unreachable_investigation_store():
             raise RuntimeError(f"{provider} token store unavailable Authorization: Bearer ghp-secret-token")
 
     app = create_app(
-        _fake_live_settings(
+        _stub_live_settings(
             github_token=None,
             slack_bot_token=None,
             discord_webhook_url="https://discord.example/webhook",
@@ -831,7 +831,7 @@ def test_ready_rejects_oauth_store_read_failure_after_store_ping_succeeds():
             raise RuntimeError(f"{provider} token store unavailable api_key=dd-secret")
 
     app = create_app(
-        _fake_live_settings(
+        _stub_live_settings(
             github_token=None,
             slack_bot_token=None,
             discord_webhook_url="https://discord.example/webhook",
@@ -855,7 +855,7 @@ def test_ready_rejects_oauth_store_read_failure_after_store_ping_succeeds():
 
 
 def test_ready_requires_database_and_redis_urls_in_production():
-    settings = _fake_live_settings(environment="production", database_url=None, redis_url=None)
+    settings = _stub_live_settings(environment="production", database_url=None, redis_url=None)
 
     response = TestClient(create_app(settings)).get("/ready")
 
@@ -869,7 +869,7 @@ def test_ready_requires_database_and_redis_urls_in_production():
 
 
 def test_ready_treats_whitespace_production_env_as_production():
-    settings = _fake_live_settings(environment=" production ", database_url=None, redis_url=None)
+    settings = _stub_live_settings(environment=" production ", database_url=None, redis_url=None)
 
     response = TestClient(create_app(settings)).get("/ready")
 
@@ -887,7 +887,7 @@ def test_ready_reports_store_construction_failure_without_crashing(monkeypatch):
         )
 
     monkeypatch.setattr("sentinel.webapp.build_store", fail_store)
-    settings = _fake_live_settings(database_url="postgresql://sentinel:db-secret@db/sentinel")
+    settings = _stub_live_settings(database_url="postgresql://sentinel:db-secret@db/sentinel")
 
     response = TestClient(create_app(settings)).get("/ready")
 
@@ -916,7 +916,7 @@ def test_ready_recovers_when_initial_store_construction_later_succeeds(monkeypat
         return SQLiteInvestigationStore()
 
     monkeypatch.setattr("sentinel.webapp.build_store", flaky_store)
-    settings = _fake_live_settings(database_url="postgresql://sentinel:db-secret@db/sentinel")
+    settings = _stub_live_settings(database_url="postgresql://sentinel:db-secret@db/sentinel")
     app = create_app(settings)
 
     response = TestClient(app).get("/ready")
@@ -957,7 +957,7 @@ def test_ready_recovers_stale_managed_store_connection(monkeypatch):
         return SQLiteInvestigationStore()
 
     monkeypatch.setattr("sentinel.webapp.build_store", build_flaky_store)
-    settings = _fake_live_settings(database_url="postgresql://sentinel:db-secret@db/sentinel")
+    settings = _stub_live_settings(database_url="postgresql://sentinel:db-secret@db/sentinel")
     app = create_app(settings)
 
     response = TestClient(app).get("/ready")
@@ -978,7 +978,7 @@ def test_ready_rejects_unreachable_redis(monkeypatch):
             return False
 
     monkeypatch.setattr("sentinel.webapp.RedisRateLimitBackend", UnreachableRedis)
-    settings = _fake_live_settings(redis_url="redis://localhost:6379/9")
+    settings = _stub_live_settings(redis_url="redis://localhost:6379/9")
 
     response = TestClient(create_app(settings)).get("/ready")
 
@@ -1005,13 +1005,13 @@ def test_redis_readiness_probe_closes_backend(monkeypatch):
 
     monkeypatch.setattr("sentinel.webapp.RedisRateLimitBackend", ReachableRedis)
 
-    assert _redis_reachable(_fake_live_settings(redis_url="redis://localhost:6379/9")) is True
+    assert _redis_reachable(_stub_live_settings(redis_url="redis://localhost:6379/9")) is True
     assert closed == ["redis://localhost:6379/9"]
 
 
 def test_ready_requires_webhook_signature_secret_in_production(monkeypatch):
     _make_production_infra_reachable(monkeypatch)
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         environment="production",
         pagerduty_webhook_secret=None,
         database_url="postgresql://sentinel:sentinel@db/sentinel",
@@ -1029,7 +1029,7 @@ def test_ready_requires_webhook_signature_secret_in_production(monkeypatch):
 
 def test_ready_reports_configured_pagerduty_webhook_subscription_binding(monkeypatch):
     _make_production_infra_reachable(monkeypatch)
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         environment="production",
         pagerduty_webhook_subscription_id="PWSUB123",
         database_url="postgresql://sentinel:sentinel@db/sentinel",
@@ -1046,7 +1046,7 @@ def test_ready_reports_configured_pagerduty_webhook_subscription_binding(monkeyp
 
 def test_ready_requires_operator_api_token_in_production(monkeypatch):
     _make_production_infra_reachable(monkeypatch)
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         environment="production",
         api_token=None,
         database_url="postgresql://sentinel:sentinel@db/sentinel",
@@ -1064,7 +1064,7 @@ def test_ready_requires_operator_api_token_in_production(monkeypatch):
 
 def test_live_ready_requires_operator_auth_in_production(monkeypatch):
     _make_production_infra_reachable(monkeypatch)
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         environment="production",
         database_url="postgresql://sentinel:sentinel@db/sentinel",
         redis_url="redis://redis:6379/0",
@@ -1085,7 +1085,7 @@ def test_live_ready_runs_provider_preflight_in_production(monkeypatch):
         return _failed_provider_preflight_report()
 
     monkeypatch.setattr("sentinel.webapp.run_live_connectivity_checks", failed_provider_preflight)
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         environment="production",
         database_url="postgresql://sentinel:sentinel@db/sentinel",
         redis_url="redis://redis:6379/0",
@@ -1109,7 +1109,7 @@ def test_live_ready_skips_provider_preflight_outside_production(monkeypatch):
         "sentinel.webapp.run_live_connectivity_checks",
         lambda settings, store: provider_calls.append((settings, store)),
     )
-    settings = _fake_live_settings(environment="development")
+    settings = _stub_live_settings(environment="development")
 
     response = TestClient(create_app(settings)).get("/ready/live", headers=_api_headers())
 
@@ -1142,7 +1142,7 @@ def test_oauth_token_store_round_trips_provider_token():
 
 
 def test_pagerduty_webhook_rejects_invalid_signature_before_live_work():
-    settings = _fake_live_settings(pagerduty_webhook_secret="pd-secret")
+    settings = _stub_live_settings(pagerduty_webhook_secret="pd-secret")
     response = TestClient(create_app(settings)).post(
         "/webhooks/pagerduty",
         content=_raw_webhook_body(),
@@ -1159,7 +1159,7 @@ def test_pagerduty_webhook_accepts_previous_secret_during_rotation(monkeypatch):
         calls.append(investigation_id)
 
     monkeypatch.setattr("sentinel.webapp._run_live_investigation_safely", no_live_network)
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         pagerduty_webhook_secret="pd-current",
         pagerduty_webhook_previous_secret="pd-previous",
     )
@@ -1184,7 +1184,7 @@ def test_pagerduty_webhook_rejects_incident_without_usable_service_before_live_w
         calls.append(investigation_id)
 
     monkeypatch.setattr("sentinel.webapp._run_live_investigation_safely", no_live_network)
-    settings = _fake_live_settings(pagerduty_webhook_secret="pd-secret")
+    settings = _stub_live_settings(pagerduty_webhook_secret="pd-secret")
     app = create_app(settings)
     raw = json.dumps(
         {
@@ -1223,7 +1223,7 @@ def test_pagerduty_webhook_ignores_non_triggering_incident_event_without_live_wo
         calls.append(investigation_id)
 
     monkeypatch.setattr("sentinel.webapp._run_live_investigation_safely", no_live_network)
-    settings = _fake_live_settings(pagerduty_webhook_secret="pd-secret")
+    settings = _stub_live_settings(pagerduty_webhook_secret="pd-secret")
     app = create_app(settings)
     raw = json.dumps(
         {
@@ -1272,7 +1272,7 @@ def test_pagerduty_webhook_uses_triggered_item_when_batch_mixes_lifecycle_events
         )
 
     monkeypatch.setattr("sentinel.webapp._run_live_investigation_safely", no_live_network)
-    settings = _fake_live_settings(pagerduty_webhook_secret="pd-secret")
+    settings = _stub_live_settings(pagerduty_webhook_secret="pd-secret")
     app = create_app(settings)
     raw = json.dumps(
         {
@@ -1335,7 +1335,7 @@ def test_pagerduty_webhook_rejects_batch_with_multiple_triggered_incidents(monke
         calls.append(investigation_id)
 
     monkeypatch.setattr("sentinel.webapp._run_live_investigation_safely", no_live_network)
-    settings = _fake_live_settings(pagerduty_webhook_secret="pd-secret")
+    settings = _stub_live_settings(pagerduty_webhook_secret="pd-secret")
     app = create_app(settings)
     raw = json.dumps(
         {
@@ -1385,7 +1385,7 @@ def test_pagerduty_webhook_rejects_batch_with_multiple_triggered_incidents(monke
 
 
 def test_pagerduty_webhook_rejects_unknown_secret_during_rotation():
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         pagerduty_webhook_secret="pd-current",
         pagerduty_webhook_previous_secret="pd-previous",
     )
@@ -1409,7 +1409,7 @@ def test_pagerduty_webhook_requires_matching_subscription_when_configured(monkey
         calls.append(investigation_id)
 
     monkeypatch.setattr("sentinel.webapp._run_live_investigation_safely", no_live_network)
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         pagerduty_webhook_secret="pd-secret",
         pagerduty_webhook_subscription_id="PWSUB123",
     )
@@ -1447,7 +1447,7 @@ def test_pagerduty_webhook_rejects_subscription_mismatch_before_parsing_json(mon
         "sentinel.webapp._run_live_investigation_safely",
         lambda *args: calls.append(args),
     )
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         pagerduty_webhook_secret="pd-secret",
         pagerduty_webhook_subscription_id="PWSUB123",
     )
@@ -1499,7 +1499,7 @@ def test_pagerduty_webhook_rejects_unready_runtime_before_creating_investigation
 
     monkeypatch.setattr("sentinel.webapp.RedisRateLimitBackend", UnreachableRedis)
     monkeypatch.setattr("sentinel.webapp._run_live_investigation_safely", no_live_network)
-    settings = _fake_live_settings(redis_url="redis://localhost:6379/9")
+    settings = _stub_live_settings(redis_url="redis://localhost:6379/9")
     app = create_app(settings)
     raw = _raw_webhook_body()
 
@@ -1532,7 +1532,7 @@ def test_pagerduty_webhook_rejects_failed_provider_preflight_before_creating_inv
         "sentinel.webapp._run_live_investigation_safely",
         lambda *args: calls.append(args),
     )
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         environment="production",
         database_url="postgresql://sentinel:sentinel@db/sentinel",
         redis_url="redis://redis:6379/0",
@@ -1571,7 +1571,7 @@ def test_pagerduty_webhook_runs_provider_preflight_with_whitespace_production_en
         "sentinel.webapp._run_live_investigation_safely",
         lambda *args: live_calls.append(args),
     )
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         environment=" production ",
         database_url="postgresql://sentinel:sentinel@db/sentinel",
         redis_url="redis://redis:6379/0",
@@ -1609,7 +1609,7 @@ def test_pagerduty_webhook_retry_returns_existing_without_provider_preflight(mon
         "sentinel.webapp._run_live_investigation_safely",
         lambda *args: live_calls.append(args),
     )
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         environment="production",
         database_url="postgresql://sentinel:sentinel@db/sentinel",
         redis_url="redis://redis:6379/0",
@@ -1655,7 +1655,7 @@ def test_pagerduty_webhook_accepts_signed_v3_test_event_without_investigation(mo
         calls.append(investigation_id)
 
     monkeypatch.setattr("sentinel.webapp._run_live_investigation_safely", no_live_network)
-    settings = _fake_live_settings(pagerduty_webhook_secret="pd-secret", redis_url="redis://localhost:6379/9")
+    settings = _stub_live_settings(pagerduty_webhook_secret="pd-secret", redis_url="redis://localhost:6379/9")
     app = create_app(settings)
     raw = json.dumps(
         {
@@ -1706,7 +1706,7 @@ def test_pagerduty_webhook_trigger_wins_when_batch_contains_test_ping(monkeypatc
         )
 
     monkeypatch.setattr("sentinel.webapp._run_live_investigation_safely", no_live_network)
-    settings = _fake_live_settings(pagerduty_webhook_secret="pd-secret")
+    settings = _stub_live_settings(pagerduty_webhook_secret="pd-secret")
     app = create_app(settings)
     raw = json.dumps(
         {
@@ -1768,7 +1768,7 @@ def test_pagerduty_webhook_test_event_requires_signature_secret_in_production(mo
         "sentinel.webapp._run_live_investigation_safely",
         lambda *args: calls.append(args),
     )
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         environment="production",
         pagerduty_webhook_secret=None,
         database_url="postgresql://sentinel:sentinel@db/sentinel",
@@ -1814,7 +1814,7 @@ def test_pagerduty_webhook_rejects_store_construction_failure_before_live_work(m
 
     monkeypatch.setattr("sentinel.webapp.build_store", fail_store)
     monkeypatch.setattr("sentinel.webapp._run_live_investigation_safely", no_live_network)
-    settings = _fake_live_settings(database_url="postgresql://sentinel:db-secret@db/sentinel")
+    settings = _stub_live_settings(database_url="postgresql://sentinel:db-secret@db/sentinel")
     app = create_app(settings)
     raw = _raw_webhook_body()
 
@@ -1840,7 +1840,7 @@ def test_pagerduty_webhook_rejects_store_construction_failure_before_live_work(m
 
 
 def test_pagerduty_webhook_rejects_malformed_json_before_live_work():
-    settings = _fake_live_settings(pagerduty_webhook_secret="pd-secret")
+    settings = _stub_live_settings(pagerduty_webhook_secret="pd-secret")
     raw = b"{not-json"
 
     response = TestClient(create_app(settings)).post(
@@ -1861,7 +1861,7 @@ def test_pagerduty_webhook_returns_investigation_id_and_status(monkeypatch):
         return None
 
     monkeypatch.setattr("sentinel.webapp._run_live_investigation_safely", no_live_network)
-    settings = _fake_live_settings(pagerduty_webhook_secret="pd-secret")
+    settings = _stub_live_settings(pagerduty_webhook_secret="pd-secret")
     app = create_app(settings)
     raw = _raw_webhook_body()
     client = TestClient(app)
@@ -1909,7 +1909,7 @@ def test_generic_webhook_returns_investigation_id_status_and_schedules_live_work
 
     monkeypatch.setattr("sentinel.webapp._run_live_investigation_safely", no_live_network)
     monkeypatch.setattr("sentinel.webapp._require_runtime_ready", ready)
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         pagerduty_api_key=None,
         pagerduty_webhook_secret=None,
         prometheus_url="http://prometheus:9090",
@@ -1995,7 +1995,7 @@ def test_generic_webhook_accepts_alertmanager_grouped_alert_payload(monkeypatch)
 
     monkeypatch.setattr("sentinel.webapp._run_live_investigation_safely", no_live_network)
     monkeypatch.setattr("sentinel.webapp._require_runtime_ready", lambda *_args, **_kwargs: None)
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         pagerduty_api_key=None,
         pagerduty_webhook_secret=None,
         prometheus_url="http://prometheus:9090",
@@ -2058,7 +2058,7 @@ def test_generic_webhook_retry_returns_existing_investigation_without_new_live_w
 
     monkeypatch.setattr("sentinel.webapp._run_live_investigation_safely", no_live_network)
     monkeypatch.setattr("sentinel.webapp._require_runtime_ready", lambda *_args, **_kwargs: None)
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         pagerduty_api_key=None,
         pagerduty_webhook_secret=None,
         prometheus_url="http://prometheus:9090",
@@ -2090,7 +2090,7 @@ def test_pagerduty_webhook_retry_returns_existing_investigation_without_new_live
         calls.append(investigation_id)
 
     monkeypatch.setattr("sentinel.webapp._run_live_investigation_safely", no_live_network)
-    settings = _fake_live_settings(pagerduty_webhook_secret="pd-secret")
+    settings = _stub_live_settings(pagerduty_webhook_secret="pd-secret")
     app = create_app(settings)
     raw = _raw_webhook_body()
     headers = {
@@ -2125,7 +2125,7 @@ def test_generic_and_pagerduty_webhooks_do_not_collide_on_same_incident_id(monke
 
     monkeypatch.setattr("sentinel.webapp._run_live_investigation_safely", no_live_network)
     monkeypatch.setattr("sentinel.webapp._require_runtime_ready", lambda *_args, **_kwargs: None)
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         pagerduty_webhook_secret="pd-secret",
         prometheus_url="http://prometheus:9090",
         loki_url="http://loki:3100",
@@ -2171,7 +2171,7 @@ def test_investigation_status_rejects_store_construction_failure_with_503(monkey
         )
 
     monkeypatch.setattr("sentinel.webapp.build_store", fail_store)
-    settings = _fake_live_settings(database_url="postgresql://sentinel:db-secret@db/sentinel")
+    settings = _stub_live_settings(database_url="postgresql://sentinel:db-secret@db/sentinel")
 
     response = TestClient(create_app(settings)).get("/investigations/inv-missing", headers=_api_headers())
 
@@ -2184,7 +2184,7 @@ def test_investigation_status_rejects_store_construction_failure_with_503(monkey
 
 
 def test_investigation_status_exposes_remote_demo_success_flags():
-    app = create_app(_fake_live_settings())
+    app = create_app(_stub_live_settings())
     state = _waiting_approval_state()
     state.artifacts["approval_slack_notified"] = True
     state.artifacts["approval_slack_notification_request_id"] = state.approval_request.id
@@ -2285,7 +2285,7 @@ def test_investigation_status_exposes_remote_demo_success_flags():
             source="observe.get_error_rate_timeseries",
             time_window="live",
             affected_service="payment-service",
-            claim="Simulated evidence should not count as live Datadog proof",
+            claim="Replay evidence should not count as live Datadog proof",
             provenance="golden_path:observe.get_error_rate_timeseries",
         ),
         Evidence(
@@ -2330,7 +2330,7 @@ def test_investigation_status_exposes_remote_demo_success_flags():
 
 
 def test_investigation_status_counts_free_provider_artifacts_without_paid_defaults():
-    app = create_app(_fake_live_settings())
+    app = create_app(_stub_live_settings())
     state = _waiting_approval_state()
     state.artifacts["live_tool_providers"] = {
         "observe.fetch_service_logs": "loki",
@@ -2380,7 +2380,7 @@ def test_investigation_status_counts_free_provider_artifacts_without_paid_defaul
 
 
 def test_investigation_status_requires_live_slack_post_evidence_for_notification_flag():
-    app = create_app(_fake_live_settings())
+    app = create_app(_stub_live_settings())
     state = _waiting_approval_state()
     state.tool_calls = [
         ToolCallRecord(
@@ -2414,7 +2414,7 @@ def test_investigation_status_requires_live_slack_post_evidence_for_notification
 
 
 def test_investigation_status_distinguishes_general_slack_from_approval_proposal_delivery():
-    app = create_app(_fake_live_settings())
+    app = create_app(_stub_live_settings())
     state = _waiting_approval_state()
     state.evidence = [
         Evidence(
@@ -2436,7 +2436,7 @@ def test_investigation_status_distinguishes_general_slack_from_approval_proposal
 
 
 def test_investigation_status_rejects_stale_approval_slack_notification_request_id():
-    app = create_app(_fake_live_settings())
+    app = create_app(_stub_live_settings())
     state = _waiting_approval_state()
     state.artifacts["approval_slack_notified"] = True
     state.artifacts["approval_slack_notification_request_id"] = "approval-old"
@@ -2462,7 +2462,7 @@ def test_investigation_status_rejects_stale_approval_slack_notification_request_
 
 
 def test_investigation_status_requires_live_kubernetes_rollback_evidence_for_execution_flag():
-    app = create_app(_fake_live_settings())
+    app = create_app(_stub_live_settings())
     state = _waiting_approval_state()
     state.tool_calls = [
         ToolCallRecord(
@@ -2496,7 +2496,7 @@ def test_investigation_status_requires_live_kubernetes_rollback_evidence_for_exe
 
 
 def test_investigation_status_exposes_redacted_evidence_gaps_and_failed_tool_calls():
-    app = create_app(_fake_live_settings())
+    app = create_app(_stub_live_settings())
     state = _waiting_approval_state()
     state.tool_calls = [
         ToolCallRecord(
@@ -2564,7 +2564,7 @@ def test_investigation_status_exposes_redacted_evidence_gaps_and_failed_tool_cal
 
 
 def test_received_investigation_creation_returns_existing_when_idempotency_reservation_loses_race():
-    app = create_app(_fake_live_settings())
+    app = create_app(_stub_live_settings())
     existing = InvestigationState(
         id="inv-existing",
         incident_id="PD-LIVE-1",
@@ -2608,7 +2608,7 @@ def test_approval_endpoint_resumes_waiting_investigation_without_freeform_slack(
         "sentinel.webapp._resume_live_investigation_with_approval",
         no_live_network_resume,
     )
-    settings = _fake_live_settings()
+    settings = _stub_live_settings()
     app = create_app(settings)
     state = _waiting_approval_state()
     app.state.store.save_state(state)
@@ -2648,7 +2648,7 @@ def test_approval_endpoint_rejects_missing_operator_token_before_resume(monkeypa
         "sentinel.webapp._resume_live_investigation_with_approval",
         no_live_network_resume,
     )
-    app = create_app(_fake_live_settings())
+    app = create_app(_stub_live_settings())
     state = _waiting_approval_state()
     app.state.store.save_state(state)
 
@@ -2685,7 +2685,7 @@ def test_approval_endpoint_rejects_unready_runtime_before_resume(monkeypatch):
         "sentinel.webapp._resume_live_investigation_with_approval",
         no_live_network_resume,
     )
-    settings = _fake_live_settings(redis_url="redis://localhost:6379/9")
+    settings = _stub_live_settings(redis_url="redis://localhost:6379/9")
     app = create_app(settings)
     state = _waiting_approval_state()
     app.state.store.save_state(state)
@@ -2720,7 +2720,7 @@ def test_approval_endpoint_rejects_failed_provider_preflight_before_resume(monke
         "sentinel.webapp._resume_live_investigation_with_approval",
         lambda *args, **kwargs: captured.append((args, kwargs)),
     )
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         environment="production",
         database_url="postgresql://sentinel:sentinel@db/sentinel",
         redis_url="redis://redis:6379/0",
@@ -2758,7 +2758,7 @@ def test_approval_endpoint_preserves_stored_datadog_oauth_for_live_refresh(monke
         "sentinel.webapp._resume_live_investigation_with_approval",
         no_live_network_resume,
     )
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         datadog_api_key=None,
         datadog_app_key=None,
         datadog_oauth_token=None,
@@ -2808,7 +2808,7 @@ def test_approval_endpoint_redacts_live_tool_failure(monkeypatch):
         "sentinel.webapp._resume_live_investigation_with_approval",
         fail_resume,
     )
-    app = create_app(_fake_live_settings())
+    app = create_app(_stub_live_settings())
     state = _waiting_approval_state()
     app.state.store.save_state(state)
 
@@ -2839,7 +2839,7 @@ def test_live_run_endpoint_redacts_live_tool_failure(monkeypatch):
         )
 
     monkeypatch.setattr("sentinel.webapp._run_live_investigation", fail_run)
-    app = create_app(_fake_live_settings())
+    app = create_app(_stub_live_settings())
 
     response = TestClient(app).post(
         "/live/run/PD-LIVE-FAIL",
@@ -2866,7 +2866,7 @@ def test_live_run_endpoint_rejects_failed_provider_preflight_before_run(monkeypa
         "sentinel.webapp._run_live_investigation",
         lambda *args, **kwargs: captured.append((args, kwargs)),
     )
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         environment="production",
         database_url="postgresql://sentinel:sentinel@db/sentinel",
         redis_url="redis://redis:6379/0",
@@ -2909,7 +2909,7 @@ def test_live_run_endpoint_passes_explicit_affected_services(monkeypatch):
         return state
 
     monkeypatch.setattr("sentinel.webapp._run_live_investigation", no_live_network_run)
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         default_service="fallback-service",
         service_aliases={"Checkout PagerDuty Service": "checkout-service"},
     )
@@ -2955,7 +2955,7 @@ def test_live_run_endpoint_rejects_malformed_explicit_services(monkeypatch):
         lambda *args, **kwargs: captured.append((args, kwargs)),
     )
 
-    response = TestClient(create_app(_fake_live_settings())).post(
+    response = TestClient(create_app(_stub_live_settings())).post(
         "/live/run/PD-LIVE-BAD-SERVICES",
         headers=_api_headers(),
         json={"affected_services": "checkout-service"},
@@ -2978,7 +2978,7 @@ def test_live_run_endpoint_preserves_stored_datadog_oauth_for_live_refresh(monke
         )
 
     monkeypatch.setattr("sentinel.webapp._run_live_investigation", no_live_network_run)
-    settings = _fake_live_settings(
+    settings = _stub_live_settings(
         datadog_api_key=None,
         datadog_app_key=None,
         datadog_oauth_token=None,
@@ -3023,7 +3023,7 @@ def test_pagerduty_v3_incident_payload_extracts_event_data_id_and_service():
     }
 
     assert _extract_incident_id(payload) == "PD-V3-INCIDENT"
-    assert _extract_services(payload, _fake_live_settings(default_service="fallback-service")) == [
+    assert _extract_services(payload, _stub_live_settings(default_service="fallback-service")) == [
         "checkout-service"
     ]
 
@@ -3235,7 +3235,7 @@ def test_pagerduty_service_summary_alias_maps_to_operational_service():
 
     assert _extract_services(
         payload,
-        _fake_live_settings(
+        _stub_live_settings(
             default_service="fallback-service",
             service_aliases={"Checkout PagerDuty Service": "checkout-service"},
         ),
@@ -3259,7 +3259,7 @@ def test_pagerduty_service_id_alias_maps_even_when_summary_is_human_facing():
 
     assert _extract_services(
         payload,
-        _fake_live_settings(
+        _stub_live_settings(
             default_service="fallback-service",
             service_aliases={"PABC123": "checkout-service"},
         ),
@@ -3282,7 +3282,7 @@ def test_pagerduty_v3_event_array_extracts_bare_event_object():
     }
 
     assert _extract_incident_id(payload) == "PD-V3-EVENTS"
-    assert _extract_services(payload, _fake_live_settings(default_service="fallback-service")) == [
+    assert _extract_services(payload, _stub_live_settings(default_service="fallback-service")) == [
         "checkout-api"
     ]
 
@@ -3301,7 +3301,7 @@ def test_pagerduty_v3_incident_payload_without_type_uses_incident_event_shape():
     }
 
     assert _extract_incident_id(payload) == "PD-V3-NO-TYPE"
-    assert _extract_services(payload, _fake_live_settings(default_service="fallback-service")) == [
+    assert _extract_services(payload, _stub_live_settings(default_service="fallback-service")) == [
         "checkout-service"
     ]
 
@@ -3322,7 +3322,7 @@ def test_pagerduty_v3_nested_incident_payload_extracts_event_data_incident_id():
     }
 
     assert _extract_incident_id(payload) == "PD-V3-NESTED"
-    assert _extract_services(payload, _fake_live_settings(default_service="fallback-service")) == [
+    assert _extract_services(payload, _stub_live_settings(default_service="fallback-service")) == [
         "payments-api"
     ]
 
@@ -3341,7 +3341,7 @@ def test_pagerduty_service_resource_event_is_not_treated_as_incident():
     }
 
     assert _extract_incident_id(payload) is None
-    assert _extract_services(payload, _fake_live_settings(default_service="fallback-service")) == [
+    assert _extract_services(payload, _stub_live_settings(default_service="fallback-service")) == [
         "fallback-service"
     ]
 
@@ -3371,7 +3371,7 @@ def test_pagerduty_batched_messages_extract_incident_and_deduped_services():
     }
 
     assert _extract_incident_id(payload) == "PD-V2-1"
-    assert _extract_services(payload, _fake_live_settings(default_service="fallback-service")) == [
+    assert _extract_services(payload, _stub_live_settings(default_service="fallback-service")) == [
         "checkout-service",
         "payment-service",
     ]
@@ -3390,7 +3390,7 @@ def test_generic_webhook_extracts_nested_alert_identity_and_services():
     }
 
     assert _extract_generic_incident_id(payload) == "alert-fp-123"
-    assert _extract_generic_services(payload, _fake_live_settings(default_service="fallback-service")) == [
+    assert _extract_generic_services(payload, _stub_live_settings(default_service="fallback-service")) == [
         "payment-service",
         "checkout-api",
     ]
@@ -3420,7 +3420,7 @@ def test_generic_webhook_extracts_alertmanager_grouped_alert_identity_and_servic
     }
 
     assert _extract_generic_incident_id(payload) == "am-fp-1"
-    assert _extract_generic_services(payload, _fake_live_settings(default_service="fallback-service")) == [
+    assert _extract_generic_services(payload, _stub_live_settings(default_service="fallback-service")) == [
         "checkout-service",
         "payments-api",
         "billing-service",
@@ -3450,7 +3450,7 @@ def test_generic_webhook_request_schema_preserves_alert_payload_and_defaults_sou
     ).normalized_payload()["source"] == "alertmanager"
 
 
-def _fake_live_settings(**overrides):
+def _stub_live_settings(**overrides):
     base = SentinelSettings.from_env()
     values = {
         "datadog_api_key": "dd-api",

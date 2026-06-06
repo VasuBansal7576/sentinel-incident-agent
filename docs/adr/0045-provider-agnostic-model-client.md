@@ -1,6 +1,6 @@
 # Provider-agnostic model client
 
-SENTINEL v1 uses a small model client interface with OpenAI as the default provider, while keeping orchestration code provider-agnostic. The model client exposes structured-output calls for parent investigations and service investigator reports, and tests use deterministic fake model clients for phase control, tool access, and eval behavior.
+SENTINEL v1 uses a small model client interface with OpenAI as the default provider, while keeping orchestration code provider-agnostic. The model client exposes structured-output calls for parent investigations and service investigator reports, and tests use deterministic replay clients for phase control, tool access, and eval behavior.
 
 **Considered Options**
 

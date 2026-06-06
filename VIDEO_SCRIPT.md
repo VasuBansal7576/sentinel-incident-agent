@@ -12,7 +12,7 @@ Show:
 
 ## 0:30-1:30 - Deterministic Demo
 
-"First I will run the deterministic proof. This is the long-horizon path: 26 state-machine steps and 35 tool calls in one session."
+"First I will run the deterministic proof. This is the long-horizon path: 26 state-machine steps and 37 tool calls in one session."
 
 Run:
 
@@ -62,7 +62,9 @@ Show:
 - The Discord message in the browser or from the summary output.
 - The line in the timeline that says Prometheus before fix and after fix.
 
-## 2:30-3:00 - Code Walkthrough
+## 2:30-3:15 - Divergence And Code Walkthrough
+
+"One place where I diverged from the model was the submission claim around enterprise providers. The model pushed toward saying every provider path was live-proven. I cut that claim. The proof path here is real Prometheus, Loki, kind, SQLite, and Discord. Datadog, PagerDuty, Slack, GitHub OAuth, and broader Kubernetes paths are implemented as additional cloud integrations unless a reviewer runs them with their own credentials."
 
 "The most substantive code is the boundary between autonomous investigation and deterministic safety."
 
@@ -77,6 +79,7 @@ Point out:
 - In `orchestrator.py`, the phase controller transitions the Investigation and calls `_tool_step`; approval is rejected unless request ID, approver, expiry, notification proof, and remediation scope all match.
 - In `subagents.py`, each Service Investigator receives an `IsolatedSubagentContext`, a scoped tool set, and returns a typed report to the parent.
 - In `tools.py`, `build_tool_contracts()` creates the 52-tool registry and `ToolExecutor.invoke()` denies tools outside the scoped registry or current phase.
+- In `model_client.py`, the production planner calls the model with tool schemas and current state, while tests can inject deterministic clients for reproducible evaluation.
 
 Closing line:
 

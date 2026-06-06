@@ -1356,7 +1356,7 @@ LIVE_TOOL_HANDLERS: dict[str, LiveHandler] = {
         ".github/workflows/deploy.yaml",
     ]),
     "infra.rollback_deployment": _k8s_rollback,
-    "infra.restart_service": _unsupported_v1_live_action("infra.restart_service", "Kubernetes changes beyond rollback remain human-owned"),
+    "infra.spawn_service_investigator": _unsupported_v1_live_action("infra.spawn_service_investigator", "service investigator spawning is bound by the orchestrator"),
     "infra.scale_replicas": _unsupported_v1_live_action("infra.scale_replicas", "infrastructure scaling remains human-owned"),
     "infra.toggle_feature_flag": _unsupported_v1_live_action("infra.toggle_feature_flag", "feature-flag mutation remains human-owned"),
     "infra.add_database_index": _sqlite_add_database_index,

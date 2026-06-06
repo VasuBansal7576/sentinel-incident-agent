@@ -12,7 +12,7 @@ The hackathon product goal is narrow and demonstrable: prove a production-shaped
 
 SENTINEL has two proof paths:
 
-- **Deterministic path:** proves long-horizon orchestration through a 26-step incident flow with 35 tool calls, scoped subagents, phase-constrained tool access, approval gating, remediation verification, and post-mortem generation.
+- **Deterministic path:** proves long-horizon orchestration through a 26-step incident flow with 37 tool calls, scoped subagents, phase-constrained tool access, approval gating, remediation verification, and post-mortem generation.
 - **Live path:** proves real operational integration through Prometheus metrics, Loki logs, a real `/slow-query` latency spike, missing-index diagnosis, human approval, `idx_orders_user_id` creation, verified latency improvement, and a Discord timeline.
 
 The product story is: SENTINEL investigates incidents and proposes fixes; in v1, remediation requires human approval. The live proof shows an approved index creation.
@@ -27,7 +27,7 @@ SENTINEL v1 has four canonical tool namespaces:
 
 - `observe.*` for logs, metrics, traces, error rates, SLO burn, dashboards, monitors, anomaly detection, and incident timeline evidence.
 - `repo.*` for deploy history, commits, pull requests, code ownership, diffs, feature flags, migrations, and runbook references.
-- `infra.*` for Kubernetes health, pods, rollouts, resource pressure, restarts, ingress state, database signals, queue health, rollback execution, and approved index creation.
+- `infra.*` for Kubernetes health, pods, rollouts, resource pressure, ingress state, database signals, queue health, service-investigator control, rollback execution, and approved index creation.
 - `comms.*` for alert context, internal updates, approval requests, stakeholder summaries, post-mortems, action items, and audit-visible communications.
 
 ## Trust Boundaries
@@ -100,7 +100,7 @@ SENTINEL v1 has four canonical tool namespaces:
 - The registry contains 52 tool contracts across `observe`, `repo`, `infra`, and `comms`.
 - The deterministic proof uses a controlled incident environment for repeatable evaluation.
 - The live proof uses real Prometheus, Loki, SQLite, kind, and Discord integrations.
-- Additional provider adapters are available for environments with external credentials, but the submission proof does not require them.
+- Additional cloud integrations are available for environments with external credentials, but the submission proof does not require them.
 - Human approval is required for all remediation in v1.
 - Approval requests must be specific and include action, affected service, evidence summary, expected effect, risks, expiry, and idempotency key.
 - Approval commands are structured; free-form chat is not treated as production approval.

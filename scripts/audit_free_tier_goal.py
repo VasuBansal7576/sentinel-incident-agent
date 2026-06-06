@@ -272,8 +272,8 @@ def _static_requirement_checks() -> list[dict[str, Any]]:
             },
         ),
         _check(
-            "premium_integrations_retained",
-            "Datadog, PagerDuty, and Slack integrations remain present as premium fallbacks.",
+            "additional_cloud_integrations_retained",
+            "Datadog, PagerDuty, and Slack integrations remain present as additional cloud integrations.",
             {
                 "sentinel/live_clients.py": ("class DatadogClient", "class PagerDutyClient", "class SlackClient"),
                 "sentinel/oauth.py": ("exchange_slack_code", "exchange_datadog_code", "verify_pagerduty_signature"),

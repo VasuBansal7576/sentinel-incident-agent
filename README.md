@@ -1,4 +1,4 @@
-SENTINEL is a production-shaped incident agent. The deterministic path proves 26-step long-horizon orchestration with 35 tool calls. The live path proves real operational integration: Prometheus metrics → Loki logs → missing index diagnosis → human approval → idx_orders_user_id creation → verified fix → Discord timeline.
+SENTINEL is a production-shaped incident agent. The deterministic path proves 26-step long-horizon orchestration with 37 tool calls. The live path proves real operational integration: Prometheus metrics → Loki logs → missing index diagnosis → human approval → idx_orders_user_id creation → verified fix → Discord timeline.
 
 # SENTINEL
 
@@ -6,7 +6,7 @@ SENTINEL is a self-hosted DevOps incident investigation agent for the first pain
 
 The submission has two proof paths:
 
-- **Deterministic path:** `python3 scripts/run_sentinel_demo.py` exercises the full 26-step state machine with 35 recorded tool calls, structured evidence, scoped subagents, approval, remediation, verification, and post-mortem output.
+- **Deterministic path:** `python3 scripts/run_sentinel_demo.py` exercises the full 26-step state machine with 37 recorded tool calls, structured evidence, scoped subagents, approval, remediation, verification, and post-mortem output.
 - **Live path:** `python3 scripts/run_real_slow_query_incident.py --summary-output .sentinel/real-slow-query-summary.json` deploys SENTINEL, Prometheus, and Loki to a local kind cluster; generates real `/slow-query` latency; receives a real Prometheus alert payload; reads real Prometheus and Loki evidence; requests approval; creates `idx_orders_user_id`; verifies latency improvement; and posts the full timeline to Discord.
 
 ## Why This Exists
@@ -39,7 +39,7 @@ python3 scripts/run_sentinel_demo.py
 This prints a record-ready incident timeline and writes a local recording summary under `.sentinel/`. The path proves:
 
 - 26-step state-machine execution.
-- 35 tool calls in one investigation session.
+- 37 tool calls in one investigation session.
 - scoped service investigators with isolated context IDs.
 - structured approval before remediation.
 - mitigation verification and post-mortem generation.
@@ -90,7 +90,7 @@ GET  /ready
 GET  /ready/live
 ```
 
-## Additional/Future Integrations
+## Additional Cloud Integrations
 
 The submission proof centers on Prometheus, Loki, kind, SQLite, and Discord because those can be demonstrated end-to-end with real local infrastructure and a free notification target. The codebase also contains additional integration surfaces for Datadog, PagerDuty, Slack, GitHub, OAuth token storage, Kubernetes rollback, and provider connectivity checks. Treat those as extension points unless they are run with real credentials in the target environment.
 
@@ -112,5 +112,6 @@ RUN_FREE_TIER_LIVE_E2E_TESTS=1 SENTINEL_LIVE_RECEIVER_URL=http://localhost:8000 
 ## Submission Artifacts
 
 - [MEMO.md](MEMO.md): one-page build memo and defended design decision.
+- [docs/live-proof.md](docs/live-proof.md): redacted Prometheus, Loki, SQLite, and Discord evidence from the live run.
 - [VIDEO_SCRIPT.md](VIDEO_SCRIPT.md): 3-minute walkthrough script.
 - [SUBMISSION.md](SUBMISSION.md): checklist for GitHub URL, video location, Codex trace path, and memo confirmation.

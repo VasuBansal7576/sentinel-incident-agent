@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import uuid4
 
+from sentinel.errors import ToolErrorKind, ToolExecutionError
 from sentinel.models import (
     AuditEvent,
     BlastRadiusReport,
@@ -13,10 +14,11 @@ from sentinel.models import (
     ServiceIncidentReport,
     StateName,
     ToolNamespace,
+    ToolResult,
 )
 from sentinel.store import SQLiteInvestigationStore
 from sentinel.time_windows import observability_payload, repository_payload
-from sentinel.tools import ToolExecutor, ToolRegistry
+from sentinel.tools import ToolExecutionContext, ToolExecutor, ToolRegistry
 
 
 @dataclass
@@ -243,6 +245,9 @@ class SubagentLauncher:
         self.executor = executor
         self.store = store
 
+    def bind_spawn_tool(self) -> None:
+        self.registry.tools["infra.spawn_service_investigator"] = ServiceInvestigatorSpawnTool(self)
+
     def service_investigator(self, investigation_id: str, service_name: str) -> ServiceIncidentReport:
         context = self._context(investigation_id, "service_investigator", service_name)
         return ServiceInvestigatorSubagent(self.registry, self.executor, self.store).run(context)
@@ -278,6 +283,41 @@ class SubagentLauncher:
             )
         )
         return context
+
+
+class ServiceInvestigatorSpawnTool:
+    def __init__(self, launcher: SubagentLauncher):
+        self.launcher = launcher
+
+    def execute(self, payload: dict[str, Any], context: ToolExecutionContext) -> ToolResult:
+        service_name = _required_spawn_service_name(payload)
+        report = self.launcher.service_investigator(context.investigation_id, service_name)
+        evidence = report.evidence
+        return ToolResult(
+            tool_name="infra.spawn_service_investigator",
+            success=True,
+            data={
+                "tool": "infra.spawn_service_investigator",
+                "implementation": "subagent::service_investigator",
+                "stub": False,
+                "service": service_name,
+                "service_report": report.model_dump(mode="json"),
+                "observation": report.local_diagnosis,
+                "evidence": [item.model_dump(mode="json") for item in evidence],
+            },
+            evidence=evidence,
+        )
+
+
+def _required_spawn_service_name(payload: dict[str, Any]) -> str:
+    service_name = payload.get("service_name") or payload.get("service")
+    if not isinstance(service_name, str) or not service_name.strip():
+        raise ToolExecutionError(
+            ToolErrorKind.PERMANENT,
+            "infra.spawn_service_investigator requires service_name",
+            retryable=False,
+        )
+    return service_name.strip()
 
 
 def _live_source(parent_state) -> str:

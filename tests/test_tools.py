@@ -1,13 +1,13 @@
 from sentinel.models import PermissionClass, ToolNamespace
 from sentinel.scenarios import build_scenarios
-from sentinel.simulated import TOOL_IMPLEMENTATIONS, SimulatedIncidentEnvironment
+from sentinel.replay import TOOL_IMPLEMENTATIONS, ReplayIncidentEnvironment
 from sentinel.store import SQLiteInvestigationStore
 from sentinel.tools import ToolExecutor, ToolFactory
 
 
 def test_registry_declares_exact_52_tools_across_four_namespaces():
     registry = ToolFactory(
-        SimulatedIncidentEnvironment(build_scenarios()["golden_path"])
+        ReplayIncidentEnvironment(build_scenarios()["golden_path"])
     ).build_registry()
 
     assert len(registry) == 52
@@ -20,7 +20,7 @@ def test_registry_declares_exact_52_tools_across_four_namespaces():
 
 def test_all_52_tools_execute_through_factory_and_typed_executor():
     registry = ToolFactory(
-        SimulatedIncidentEnvironment(build_scenarios()["golden_path"])
+        ReplayIncidentEnvironment(build_scenarios()["golden_path"])
     ).build_registry()
     store = SQLiteInvestigationStore()
     executor = ToolExecutor(registry, store)
@@ -35,21 +35,34 @@ def test_all_52_tools_execute_through_factory_and_typed_executor():
             approved=contract.permission == PermissionClass.HUMAN_APPROVED_REMEDIATION,
         )
         assert result.success, contract.name
-        assert result.data["implementation"] == f"simulated::{contract.name}"
+        assert result.data["implementation"] == f"deterministic_replay::{contract.name}"
         assert result.data["stub"] is False
         implementation_keys = set(TOOL_IMPLEMENTATIONS[contract.name]["data"])
         assert implementation_keys
         assert implementation_keys.issubset(result.data)
         assert result.evidence, contract.name
-        assert "returned simulated source material" not in result.evidence[0].claim
+        assert "returned placeholder source material" not in result.evidence[0].claim
         assert result.attempt_count >= 1
 
     assert len(store.list_tool_calls(investigation_id)) == 52
 
 
+def test_registry_exposes_service_investigator_spawn_tool_contract():
+    registry = ToolFactory(
+        ReplayIncidentEnvironment(build_scenarios()["golden_path"])
+    ).build_registry()
+    contract = registry.get_contract("infra.spawn_service_investigator")
+
+    assert contract.namespace == ToolNamespace.INFRA
+    assert contract.permission == PermissionClass.READ_ONLY
+    assert contract.input_schema["service_name"] == "string"
+    assert contract.output_schema["service_report"] == "ServiceIncidentReport"
+    assert [state.value for state in contract.phase_allowlist] == ["service_investigation"]
+
+
 def test_retry_backoff_records_attempts_for_transient_tool_failure():
     scenario = build_scenarios()["golden_path"]
-    registry = ToolFactory(SimulatedIncidentEnvironment(scenario)).build_registry()
+    registry = ToolFactory(ReplayIncidentEnvironment(scenario)).build_registry()
     store = SQLiteInvestigationStore()
     executor = ToolExecutor(registry, store)
 
@@ -67,7 +80,7 @@ def test_retry_backoff_records_attempts_for_transient_tool_failure():
 
 def test_tool_access_denial_is_audited_without_substitution():
     registry = ToolFactory(
-        SimulatedIncidentEnvironment(build_scenarios()["golden_path"])
+        ReplayIncidentEnvironment(build_scenarios()["golden_path"])
     ).build_registry()
     store = SQLiteInvestigationStore()
     executor = ToolExecutor(registry, store)

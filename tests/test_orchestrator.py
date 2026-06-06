@@ -17,7 +17,7 @@ from sentinel.models import (
 )
 from sentinel.orchestrator import SentinelOrchestrator, _tool_result_confirmed_for_live, _tool_step_detail
 from sentinel.scenarios import build_scenarios
-from sentinel.simulated import SimulatedIncidentEnvironment
+from sentinel.replay import ReplayIncidentEnvironment
 from sentinel.store import SQLiteInvestigationStore
 from sentinel.subagents import SubagentLauncher
 from sentinel.time_windows import LIVE_OBSERVABILITY_WINDOW, LIVE_REPOSITORY_WINDOW
@@ -79,6 +79,30 @@ def test_subagents_have_isolated_contexts_and_scoped_registries():
     )
 
 
+def test_service_investigator_tool_output_is_consumed_by_reconciliation():
+    state = SentinelOrchestrator().run_scenario("golden_path")
+
+    spawn_calls = [
+        call for call in state.tool_calls if call.tool_name == "infra.spawn_service_investigator"
+    ]
+    assert len(spawn_calls) == len(state.service_reports) == 2
+    assert state.blast_radius_report is not None
+    assert state.remediation_readiness_report is not None
+
+    service_report = state.service_reports[0].model_copy(
+        update={"evidence_gaps": ["service-local dependency graph evidence missing"]}
+    )
+    diagnosis = SentinelOrchestrator()._reconcile_evidence(
+        state,
+        [service_report],
+        state.blast_radius_report,
+        state.remediation_readiness_report,
+    )
+
+    assert diagnosis.confidence == ConfidenceLevel.LOW
+    assert "service-local dependency graph evidence missing" in diagnosis.evidence_gaps
+
+
 def test_degraded_trace_scenario_returns_insufficient_confidence_without_rollback():
     state = SentinelOrchestrator().run_scenario("tool_degraded")
 
@@ -137,7 +161,7 @@ def test_live_remediation_confirmation_rejects_success_without_live_evidence():
     assert _tool_result_confirmed_for_live(result, "infra.rollback_deployment") is False
 
 
-def test_simulated_remediation_uses_success_semantics_without_live_evidence(tmp_path):
+def test_replay_remediation_uses_success_semantics_without_live_evidence(tmp_path):
     store = SQLiteInvestigationStore(tmp_path / "sentinel.db")
 
     state = SentinelOrchestrator(store=store).run_scenario("golden_path")
@@ -166,7 +190,7 @@ def test_live_remediation_confirmation_accepts_verified_provider_rollback_eviden
 
 def test_live_incident_waits_for_structured_approval_before_remediation(tmp_path):
     store = SQLiteInvestigationStore(tmp_path / "sentinel.db")
-    orchestrator = _live_orchestrator_with_simulated_tools(store)
+    orchestrator = _live_orchestrator_with_replay_tools(store)
 
     state = orchestrator.run_live_incident(
         incident_id="PD-LIVE-APPROVAL",
@@ -196,7 +220,7 @@ def test_live_incident_waits_for_structured_approval_before_remediation(tmp_path
 
 def test_live_incident_preserves_receiver_webhook_artifacts(tmp_path):
     store = SQLiteInvestigationStore(tmp_path / "sentinel.db")
-    orchestrator = _live_orchestrator_with_simulated_tools(store)
+    orchestrator = _live_orchestrator_with_replay_tools(store)
     received = InvestigationState(
         id="inv-generic-preserved",
         incident_id="FREE-GENERIC-1",
@@ -358,7 +382,7 @@ def test_live_approval_proposal_message_contains_diagnosis_evidence_recommendati
 
 def test_live_incident_resumes_after_matching_approval_command(tmp_path):
     store = SQLiteInvestigationStore(tmp_path / "sentinel.db")
-    orchestrator = _live_orchestrator_with_simulated_tools(store)
+    orchestrator = _live_orchestrator_with_replay_tools(store)
     waiting = orchestrator.run_live_incident(
         incident_id="PD-LIVE-APPROVAL",
         affected_services=["payment-service", "api-gateway"],
@@ -471,7 +495,7 @@ def test_live_remediation_refuses_stale_approval_slack_notification_proof():
 
 def test_duplicate_approval_command_returns_current_state_without_reprocessing(tmp_path):
     store = SQLiteInvestigationStore(tmp_path / "sentinel.db")
-    orchestrator = _live_orchestrator_with_simulated_tools(store)
+    orchestrator = _live_orchestrator_with_replay_tools(store)
     waiting = orchestrator.run_live_incident(
         incident_id="PD-LIVE-DUPLICATE-APPROVAL",
         affected_services=["payment-service", "api-gateway"],
@@ -498,7 +522,7 @@ def test_duplicate_approval_command_returns_current_state_without_reprocessing(t
 
 def test_mismatched_approval_command_stays_at_human_boundary(tmp_path):
     store = SQLiteInvestigationStore(tmp_path / "sentinel.db")
-    orchestrator = _live_orchestrator_with_simulated_tools(store)
+    orchestrator = _live_orchestrator_with_replay_tools(store)
     waiting = orchestrator.run_live_incident(
         incident_id="PD-LIVE-MISMATCHED-APPROVAL",
         affected_services=["payment-service", "api-gateway"],
@@ -524,7 +548,7 @@ def test_mismatched_approval_command_stays_at_human_boundary(tmp_path):
 
 def test_stale_approval_slack_notification_stays_at_human_boundary(tmp_path):
     store = SQLiteInvestigationStore(tmp_path / "sentinel.db")
-    orchestrator = _live_orchestrator_with_simulated_tools(store)
+    orchestrator = _live_orchestrator_with_replay_tools(store)
     waiting = orchestrator.run_live_incident(
         incident_id="PD-LIVE-STALE-SLACK-APPROVAL",
         affected_services=["payment-service", "api-gateway"],
@@ -553,7 +577,7 @@ def test_stale_approval_slack_notification_stays_at_human_boundary(tmp_path):
 
 def test_unauthorized_approval_command_stays_at_human_boundary(tmp_path):
     store = SQLiteInvestigationStore(tmp_path / "sentinel.db")
-    orchestrator = _live_orchestrator_with_simulated_tools(store)
+    orchestrator = _live_orchestrator_with_replay_tools(store)
     waiting = orchestrator.run_live_incident(
         incident_id="PD-LIVE-UNAUTHORIZED-APPROVAL",
         affected_services=["payment-service", "api-gateway"],
@@ -579,7 +603,7 @@ def test_unauthorized_approval_command_stays_at_human_boundary(tmp_path):
 
 def test_expired_approval_command_stays_at_human_boundary(tmp_path):
     store = SQLiteInvestigationStore(tmp_path / "sentinel.db")
-    orchestrator = _live_orchestrator_with_simulated_tools(store)
+    orchestrator = _live_orchestrator_with_replay_tools(store)
     waiting = orchestrator.run_live_incident(
         incident_id="PD-LIVE-EXPIRED-APPROVAL",
         affected_services=["payment-service", "api-gateway"],
@@ -607,7 +631,7 @@ def test_expired_approval_command_stays_at_human_boundary(tmp_path):
 
 def test_live_single_service_skips_service_investigator_fanout(tmp_path):
     store = SQLiteInvestigationStore(tmp_path / "sentinel.db")
-    orchestrator = _live_orchestrator_with_simulated_tools(store)
+    orchestrator = _live_orchestrator_with_replay_tools(store)
 
     state = orchestrator.run_live_incident(
         incident_id="PD-LIVE-SINGLE",
@@ -626,7 +650,7 @@ def test_live_single_service_skips_service_investigator_fanout(tmp_path):
 
 def test_live_service_investigator_reports_do_not_emit_demo_constants(tmp_path):
     store = SQLiteInvestigationStore(tmp_path / "sentinel.db")
-    orchestrator = _live_orchestrator_with_simulated_tools(store)
+    orchestrator = _live_orchestrator_with_replay_tools(store)
 
     state = orchestrator.run_live_incident(
         incident_id="PD-LIVE-MULTI",
@@ -668,7 +692,7 @@ def test_live_service_investigator_reports_do_not_emit_demo_constants(tmp_path):
 
 def test_live_incident_derives_provider_windows_from_webhook_timestamp(tmp_path):
     store = SQLiteInvestigationStore(tmp_path / "sentinel.db")
-    orchestrator = _live_orchestrator_with_simulated_tools(store)
+    orchestrator = _live_orchestrator_with_replay_tools(store)
 
     state = orchestrator.run_live_incident(
         incident_id="PD-LIVE-WINDOWS",
@@ -700,7 +724,7 @@ def test_live_incident_derives_provider_windows_from_webhook_timestamp(tmp_path)
 
 def test_live_incident_falls_back_to_relative_provider_windows(tmp_path):
     store = SQLiteInvestigationStore(tmp_path / "sentinel.db")
-    orchestrator = _live_orchestrator_with_simulated_tools(store)
+    orchestrator = _live_orchestrator_with_replay_tools(store)
 
     state = orchestrator.run_live_incident(
         incident_id="PD-LIVE-WINDOW-FALLBACK",
@@ -724,7 +748,7 @@ def test_live_incident_falls_back_to_relative_provider_windows(tmp_path):
 
 def test_live_incident_without_change_artifact_returns_insufficient_confidence(tmp_path):
     store = SQLiteInvestigationStore(tmp_path / "sentinel.db")
-    environment = SimulatedIncidentEnvironment(build_scenarios()["golden_path"])
+    environment = ReplayIncidentEnvironment(build_scenarios()["golden_path"])
     orchestrator = _live_orchestrator_with_environment(store, environment)
 
     state = orchestrator.run_live_incident(
@@ -846,14 +870,14 @@ def _assert_approval_boundary_held(
     assert loaded.status == InvestigationStatus.WAITING_FOR_APPROVAL
 
 
-def _live_orchestrator_with_simulated_tools(store: SQLiteInvestigationStore) -> SentinelOrchestrator:
-    environment = _LiveShapedSimulatedEnvironment(build_scenarios()["golden_path"])
+def _live_orchestrator_with_replay_tools(store: SQLiteInvestigationStore) -> SentinelOrchestrator:
+    environment = _LiveShapedReplayEnvironment(build_scenarios()["golden_path"])
     return _live_orchestrator_with_environment(store, environment)
 
 
 def _live_orchestrator_with_environment(
     store: SQLiteInvestigationStore,
-    environment: SimulatedIncidentEnvironment,
+    environment: ReplayIncidentEnvironment,
 ) -> SentinelOrchestrator:
     registry = ToolFactory(environment).build_registry()
     executor = ToolExecutor(registry, store)
@@ -861,10 +885,11 @@ def _live_orchestrator_with_environment(
     orchestrator.registry = registry
     orchestrator.executor = executor
     orchestrator.subagents = SubagentLauncher(registry, executor, store)
+    orchestrator.subagents.bind_spawn_tool()
     return orchestrator
 
 
-class _LiveShapedSimulatedEnvironment(SimulatedIncidentEnvironment):
+class _LiveShapedReplayEnvironment(ReplayIncidentEnvironment):
     def invoke(self, contract, payload):
         data = super().invoke(contract, payload)
         if contract.name == "repo.get_deploy_history":
@@ -916,7 +941,7 @@ class _LiveShapedSimulatedEnvironment(SimulatedIncidentEnvironment):
         return data
 
 
-class _RecordingLiveEnvironment(_LiveShapedSimulatedEnvironment):
+class _RecordingLiveEnvironment(_LiveShapedReplayEnvironment):
     def __init__(self, scenario):
         super().__init__(scenario)
         self.rollback_payloads = []
@@ -927,7 +952,7 @@ class _RecordingLiveEnvironment(_LiveShapedSimulatedEnvironment):
         return super().invoke(contract, payload)
 
 
-class _LiveOncallEnvironment(_LiveShapedSimulatedEnvironment):
+class _LiveOncallEnvironment(_LiveShapedReplayEnvironment):
     def __init__(self, scenario, oncall_user: str):
         super().__init__(scenario)
         self.oncall_user = oncall_user
@@ -939,7 +964,7 @@ class _LiveOncallEnvironment(_LiveShapedSimulatedEnvironment):
         return data
 
 
-class _LiveNoOncallEnvironment(_LiveShapedSimulatedEnvironment):
+class _LiveNoOncallEnvironment(_LiveShapedReplayEnvironment):
     def invoke(self, contract, payload):
         data = super().invoke(contract, payload)
         if contract.name == "comms.page_oncall_engineer":
@@ -948,7 +973,7 @@ class _LiveNoOncallEnvironment(_LiveShapedSimulatedEnvironment):
         return data
 
 
-class _ApprovalSlackFailureEnvironment(_LiveShapedSimulatedEnvironment):
+class _ApprovalSlackFailureEnvironment(_LiveShapedReplayEnvironment):
     def invoke(self, contract, payload):
         if contract.name == "comms.post_to_slack" and payload.get("approval_request_id"):
             raise ToolExecutionError(
@@ -959,7 +984,7 @@ class _ApprovalSlackFailureEnvironment(_LiveShapedSimulatedEnvironment):
         return super().invoke(contract, payload)
 
 
-class _ApprovalSlackUnconfirmedEnvironment(_LiveShapedSimulatedEnvironment):
+class _ApprovalSlackUnconfirmedEnvironment(_LiveShapedReplayEnvironment):
     def invoke(self, contract, payload):
         data = super().invoke(contract, payload)
         if contract.name == "comms.post_to_slack" and payload.get("approval_request_id"):
@@ -975,7 +1000,7 @@ class _ApprovalSlackUnconfirmedEnvironment(_LiveShapedSimulatedEnvironment):
         return data
 
 
-class _LiveNoRollbackTargetEnvironment(_LiveShapedSimulatedEnvironment):
+class _LiveNoRollbackTargetEnvironment(_LiveShapedReplayEnvironment):
     def invoke(self, contract, payload):
         data = super().invoke(contract, payload)
         if contract.name == "repo.get_rollback_targets":

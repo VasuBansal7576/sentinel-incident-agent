@@ -187,7 +187,7 @@ def test_trigger_webhook_headers_omit_optional_authenticity_headers_when_unconfi
 
 def test_trigger_webhook_preflight_checks_live_connectivity_before_webhook():
     script = _load_trigger_script()
-    client = _FakePreflightClient(
+    client = _StubPreflightClient(
         ready={"ready": True},
         connectivity={"ready": True, "missing_live_credentials": [], "checks": []},
     )
@@ -209,7 +209,7 @@ def test_trigger_webhook_preflight_checks_live_connectivity_before_webhook():
 
 def test_trigger_webhook_preflight_rejects_invalid_base_url_before_network_or_auth():
     script = _load_trigger_script()
-    client = _FakePreflightClient(
+    client = _StubPreflightClient(
         ready={"ready": True},
         connectivity={"ready": True, "missing_live_credentials": [], "checks": []},
     )
@@ -228,7 +228,7 @@ def test_trigger_webhook_preflight_rejects_invalid_base_url_before_network_or_au
 
 def test_trigger_webhook_preflight_returns_not_ready_when_connectivity_fails():
     script = _load_trigger_script()
-    client = _FakePreflightClient(
+    client = _StubPreflightClient(
         ready={"ready": True},
         connectivity={
             "ready": False,
@@ -263,7 +263,7 @@ def test_trigger_webhook_preflight_returns_not_ready_when_connectivity_fails():
 
 def test_trigger_webhook_preflight_reports_connectivity_auth_failure():
     script = _load_trigger_script()
-    client = _FakePreflightClient(
+    client = _StubPreflightClient(
         ready={"ready": True},
         connectivity={"detail": "Invalid SENTINEL API token"},
         connectivity_status_code=401,
@@ -281,7 +281,7 @@ def test_trigger_webhook_preflight_reports_connectivity_auth_failure():
 
 def test_trigger_webhook_preflight_keeps_base_url_when_receiver_is_unreachable():
     script = _load_trigger_script()
-    client = _FakePreflightClient(
+    client = _StubPreflightClient(
         ready=httpx.ReadTimeout("timed out"),
         connectivity={"ready": True, "missing_live_credentials": [], "checks": []},
     )
@@ -301,7 +301,7 @@ def test_trigger_webhook_preflight_keeps_base_url_when_receiver_is_unreachable()
 
 def test_trigger_webhook_preflight_reports_malformed_ready_success_body():
     script = _load_trigger_script()
-    client = _FakePreflightClient(
+    client = _StubPreflightClient(
         ready={"status": "ok"},
         connectivity={"ready": True, "missing_live_credentials": [], "checks": []},
     )
@@ -322,7 +322,7 @@ def test_trigger_webhook_preflight_reports_malformed_ready_success_body():
 
 def test_trigger_webhook_preflight_reports_malformed_connectivity_success_body():
     script = _load_trigger_script()
-    client = _FakePreflightClient(
+    client = _StubPreflightClient(
         ready={"ready": True},
         connectivity={"status": "ok"},
     )
@@ -547,7 +547,7 @@ def _approved_tool_proofs():
     return {**_tool_proofs(), "infra.rollback_deployment": 1}
 
 
-class _FakePreflightClient:
+class _StubPreflightClient:
     def __init__(
         self,
         *,

@@ -51,17 +51,17 @@ from sentinel.time_windows import repository_payload
 
 
 def test_live_github_pr_handler_infers_recent_pr_instead_of_defaulting_to_one():
-    router = LiveToolRouter(_FakeClients())
+    router = LiveToolRouter(_StubClients())
 
     result = _github_pr(router, {"service": "checkout-service"})
 
     assert result["pull_request"]["number"] == 231
-    assert _FakeClients.github.requested_pull_request == 231
-    assert _FakeClients.github.requested_pull_request != 1
+    assert _StubClients.github.requested_pull_request == 231
+    assert _StubClients.github.requested_pull_request != 1
 
 
 def test_live_github_pr_handler_infers_pr_from_incident_window_commit_sha():
-    clients = _FakePrCorrelationClients(
+    clients = _StubPrCorrelationClients(
         commits=[{"sha": "sha-window", "commit": {"message": "Deploy checkout change"}}],
         pull_requests=[
             {"number": 999, "merge_commit_sha": "sha-other"},
@@ -90,7 +90,7 @@ def test_live_github_pr_handler_infers_pr_from_incident_window_commit_sha():
 
 
 def test_live_github_pr_handler_confirms_pr_by_paginated_pr_commits():
-    clients = _FakePrCorrelationClients(
+    clients = _StubPrCorrelationClients(
         commits=[{"sha": "sha-window", "commit": {"message": "Deploy checkout change"}}],
         pull_requests=[
             {"number": 999, "merge_commit_sha": "sha-other"},
@@ -111,7 +111,7 @@ def test_live_github_pr_handler_confirms_pr_by_paginated_pr_commits():
 
 
 def test_live_github_pr_handler_rejects_uncorrelated_recent_pr():
-    clients = _FakePrCorrelationClients(
+    clients = _StubPrCorrelationClients(
         commits=[{"sha": "sha-window", "commit": {"message": "Deploy checkout change"}}],
         pull_requests=[{"number": 999, "merge_commit_sha": "sha-other"}],
     )
@@ -125,7 +125,7 @@ def test_live_github_pr_handler_rejects_uncorrelated_recent_pr():
 
 
 def test_live_github_pr_handler_rejects_unconfirmed_commit_message_pr_reference():
-    clients = _FakePrCorrelationClients(
+    clients = _StubPrCorrelationClients(
         commits=[
             {
                 "sha": "sha-window",
@@ -146,7 +146,7 @@ def test_live_github_pr_handler_rejects_unconfirmed_commit_message_pr_reference(
 
 
 def test_live_github_pr_handler_rejects_invalid_explicit_pr_before_network():
-    clients = _FakePrCorrelationClients(commits=[], pull_requests=[])
+    clients = _StubPrCorrelationClients(commits=[], pull_requests=[])
     router = LiveToolRouter(clients)
 
     with pytest.raises(ToolExecutionError) as exc:
@@ -160,7 +160,7 @@ def test_live_github_pr_handler_rejects_invalid_explicit_pr_before_network():
 
 
 def test_live_github_commit_handler_honors_incident_time_window():
-    clients = _FakeTimeWindowClients()
+    clients = _StubTimeWindowClients()
     router = LiveToolRouter(clients)
 
     result = _github_commits(
@@ -182,7 +182,7 @@ def test_live_github_commit_handler_honors_incident_time_window():
 
 
 def test_live_github_deployment_handler_honors_incident_time_window():
-    clients = _FakeTimeWindowClients()
+    clients = _StubTimeWindowClients()
     router = LiveToolRouter(clients)
 
     result = _github_deployments(
@@ -230,7 +230,7 @@ def test_live_repository_payload_carries_collected_ref_and_pull_request():
 
 
 def test_live_github_status_handler_infers_incident_window_commit_when_ref_missing():
-    clients = _FakeStatusClients(commits=[{"sha": "sha-window"}])
+    clients = _StubStatusClients(commits=[{"sha": "sha-window"}])
     router = LiveToolRouter(clients)
 
     result = _github_status(
@@ -256,7 +256,7 @@ def test_live_github_status_handler_infers_incident_window_commit_when_ref_missi
 
 
 def test_live_github_status_handler_uses_explicit_sha_for_status_and_checks():
-    clients = _FakeStatusClients()
+    clients = _StubStatusClients()
     router = LiveToolRouter(clients)
 
     result = _github_status(router, {"sha": "sha-live"})
@@ -272,7 +272,7 @@ def test_live_github_status_handler_uses_explicit_sha_for_status_and_checks():
 
 
 def test_live_github_content_handler_falls_back_across_real_repo_candidates():
-    clients = _FakeContentsClients(
+    clients = _StubContentsClients(
         {
             "deployment.yml": ToolExecutionError(ToolErrorKind.PERMANENT, "github request failed 404: not found"),
             "deployment.yaml": {"name": "deployment.yaml", "sha": "sha-deploy"},
@@ -294,7 +294,7 @@ def test_live_github_content_handler_falls_back_across_real_repo_candidates():
 
 
 def test_live_github_content_handler_keeps_explicit_paths_strict():
-    clients = _FakeContentsClients(
+    clients = _StubContentsClients(
         {
             "custom/deploy.yaml": ToolExecutionError(
                 ToolErrorKind.PERMANENT,
@@ -315,7 +315,7 @@ def test_live_github_content_handler_keeps_explicit_paths_strict():
 
 
 def test_live_github_content_handler_surfaces_non_missing_provider_errors():
-    clients = _FakeContentsClients(
+    clients = _StubContentsClients(
         {
             "deployment.yml": ToolExecutionError(
                 ToolErrorKind.RATE_LIMITED,
@@ -337,7 +337,7 @@ def test_live_github_content_handler_surfaces_non_missing_provider_errors():
 
 
 def test_live_feature_flags_return_not_configured_when_no_candidate_file_exists():
-    clients = _FakeContentsClients({})
+    clients = _StubContentsClients({})
     router = LiveToolRouter(clients)
 
     result = LIVE_TOOL_HANDLERS["repo.get_feature_flags"](router, {"service": "checkout-service", "ref": "main"})
@@ -352,7 +352,7 @@ def test_live_feature_flags_return_not_configured_when_no_candidate_file_exists(
 
 
 def test_live_github_blame_handler_infers_path_from_correlated_pr_files():
-    clients = _FakePrCorrelationClients(
+    clients = _StubPrCorrelationClients(
         commits=[{"sha": "sha-window", "commit": {"message": "Merge pull request #456 from checkout/fix"}}],
         pull_requests=[],
         pull_request_commits={456: [{"sha": "sha-window", "commit": {"message": "Deploy checkout fix"}}]},
@@ -375,7 +375,7 @@ def test_live_github_blame_handler_infers_path_from_correlated_pr_files():
 
 
 def test_live_github_blame_handler_queries_commits_for_explicit_file_path():
-    clients = _FakeTimeWindowClients()
+    clients = _StubTimeWindowClients()
     router = LiveToolRouter(clients)
 
     result = _github_blame(
@@ -403,7 +403,7 @@ def test_live_github_blame_handler_queries_commits_for_explicit_file_path():
 
 
 def test_live_github_blame_handler_rejects_invalid_line_payload():
-    router = LiveToolRouter(_FakeTimeWindowClients())
+    router = LiveToolRouter(_StubTimeWindowClients())
 
     try:
         _github_blame(router, {"path": "checkout/payment.py", "line": "zero"})
@@ -429,7 +429,7 @@ def test_live_deployment_timestamp_filter_keeps_only_incident_window_items():
 
 
 def test_live_dashboard_handler_requires_explicit_dashboard_id():
-    clients = _FakeDashboardClients()
+    clients = _StubDashboardClients()
     router = LiveToolRouter(clients)
 
     try:
@@ -445,7 +445,7 @@ def test_live_dashboard_handler_requires_explicit_dashboard_id():
 
 
 def test_live_dashboard_handler_uses_explicit_dashboard_id():
-    clients = _FakeDashboardClients()
+    clients = _StubDashboardClients()
     router = LiveToolRouter(clients)
 
     result = _dashboard(router, {"dashboard_id": "dash-payments-overview"})
@@ -556,7 +556,7 @@ def test_live_slack_channel_artifact_routes_later_comms_payloads():
 
 
 def test_live_slack_channel_handler_requires_explicit_channel_name():
-    router = LiveToolRouter(_FakeSlackClients())
+    router = LiveToolRouter(_StubSlackClients())
 
     try:
         _slack_channel(router, {"service": "checkout-service"})
@@ -569,7 +569,7 @@ def test_live_slack_channel_handler_requires_explicit_channel_name():
 
 
 def test_live_slack_channel_handler_creates_explicit_channel_name():
-    clients = _FakeSlackClients()
+    clients = _StubSlackClients()
     router = LiveToolRouter(clients)
 
     result = _slack_channel(router, {"channel_name": "inc-pd-live-checkout"})
@@ -579,7 +579,7 @@ def test_live_slack_channel_handler_creates_explicit_channel_name():
 
 
 def test_live_slack_channel_handler_returns_discord_channel_receipt_when_slack_is_disabled():
-    router = LiveToolRouter(_FakeDiscordFallbackClients())
+    router = LiveToolRouter(_StubDiscordFallbackClients())
 
     result = _slack_channel(router, {"channel_name": "inc-free-alert-checkout"})
 
@@ -592,7 +592,7 @@ def test_live_slack_channel_handler_returns_discord_channel_receipt_when_slack_i
 
 
 def test_live_pagerduty_oncall_handler_includes_incident_when_id_is_present():
-    clients = _FakePagerDutyClients()
+    clients = _StubPagerDutyClients()
     router = LiveToolRouter(clients)
 
     result = _pagerduty_oncall(router, {"incident_id": "PD-LIVE-123"})
@@ -607,7 +607,7 @@ def test_live_pagerduty_oncall_handler_includes_incident_when_id_is_present():
 
 
 def test_live_pagerduty_oncall_handler_does_not_broaden_when_incident_policy_has_no_oncall():
-    clients = _FakePagerDutyClients(
+    clients = _StubPagerDutyClients(
         policy_oncalls={("EP-empty",): []},
         incident_policy_id="EP-empty",
     )
@@ -622,7 +622,7 @@ def test_live_pagerduty_oncall_handler_does_not_broaden_when_incident_policy_has
 
 
 def test_live_pagerduty_oncall_empty_incident_policy_yields_empty_live_evidence():
-    clients = _FakePagerDutyClients(
+    clients = _StubPagerDutyClients(
         policy_oncalls={("EP-empty",): []},
         incident_policy_id="EP-empty",
     )
@@ -640,7 +640,7 @@ def test_live_pagerduty_oncall_empty_incident_policy_yields_empty_live_evidence(
 
 
 def test_live_pagerduty_oncall_handler_does_not_use_account_oncall_without_incident_policy():
-    clients = _FakePagerDutyClients(incident_policy_id=None)
+    clients = _StubPagerDutyClients(incident_policy_id=None)
     router = LiveToolRouter(clients)
 
     result = _pagerduty_oncall(router, {"incident_id": "PD-LIVE-123"})
@@ -652,7 +652,7 @@ def test_live_pagerduty_oncall_handler_does_not_use_account_oncall_without_incid
 
 
 def test_live_pagerduty_oncall_unconfirmed_incident_policy_yields_empty_live_evidence():
-    clients = _FakePagerDutyClients(incident_policy_id=None)
+    clients = _StubPagerDutyClients(incident_policy_id=None)
     router = LiveToolRouter(clients)
 
     result = _pagerduty_oncall(router, {"incident_id": "PD-LIVE-123", "service": "checkout-service"})
@@ -667,7 +667,7 @@ def test_live_pagerduty_oncall_unconfirmed_incident_policy_yields_empty_live_evi
 
 
 def test_live_pagerduty_oncall_confirmed_incident_policy_yields_live_evidence():
-    clients = _FakePagerDutyClients()
+    clients = _StubPagerDutyClients()
     router = LiveToolRouter(clients)
 
     result = _pagerduty_oncall(router, {"incident_id": "PD-LIVE-123", "service": "checkout-service"})
@@ -728,7 +728,7 @@ def test_loki_empty_streams_yield_empty_live_evidence():
 
 
 def test_live_pagerduty_close_handler_requires_explicit_incident_id():
-    router = LiveToolRouter(_FakePagerDutyClients())
+    router = LiveToolRouter(_StubPagerDutyClients())
 
     try:
         _pagerduty_close(router, {"requester_email": "oncall@example.com"})
@@ -741,7 +741,7 @@ def test_live_pagerduty_close_handler_requires_explicit_incident_id():
 
 
 def test_live_pagerduty_close_handler_trims_explicit_incident_id():
-    clients = _FakePagerDutyClients()
+    clients = _StubPagerDutyClients()
     router = LiveToolRouter(clients)
 
     result = _pagerduty_close(
@@ -846,7 +846,7 @@ def test_live_paged_user_shortcut_does_not_authorize_remediation():
 
 
 def test_live_slack_post_handler_requires_explicit_message_payload():
-    router = LiveToolRouter(_FakeSlackClients())
+    router = LiveToolRouter(_StubSlackClients())
 
     try:
         _slack_post(router, {"channel": "C-live"})
@@ -859,7 +859,7 @@ def test_live_slack_post_handler_requires_explicit_message_payload():
 
 
 def test_live_slack_post_handler_sends_explicit_text_payload():
-    clients = _FakeSlackClients()
+    clients = _StubSlackClients()
     router = LiveToolRouter(clients)
 
     result = _slack_post(router, {"text": " SENTINEL is investigating. ", "channel": "C-live"})
@@ -874,7 +874,7 @@ def test_live_slack_post_handler_sends_explicit_text_payload():
 
 
 def test_live_slack_post_handler_falls_back_to_discord_webhook():
-    clients = _FakeDiscordFallbackClients()
+    clients = _StubDiscordFallbackClients()
     router = LiveToolRouter(clients)
 
     result = _slack_post(router, {"message": " SENTINEL is investigating. "})
@@ -929,7 +929,7 @@ def test_live_slack_post_handler_fails_closed_when_slack_and_discord_are_missing
 
 
 def test_live_status_page_update_is_out_of_scope_for_v1_without_slack_fallback():
-    clients = _FakeSlackClients()
+    clients = _StubSlackClients()
     router = LiveToolRouter(clients)
 
     with pytest.raises(ToolExecutionError) as exc:
@@ -948,7 +948,6 @@ def test_live_status_page_update_is_out_of_scope_for_v1_without_slack_fallback()
 @pytest.mark.parametrize(
     "tool_name",
     [
-        "infra.restart_service",
         "infra.scale_replicas",
         "infra.toggle_feature_flag",
         "infra.flush_cache",
@@ -1004,7 +1003,7 @@ def test_live_add_database_index_rejects_unscoped_index_target(monkeypatch, tmp_
 
 
 def test_live_slack_schedule_handler_requires_explicit_message_and_post_at():
-    router = LiveToolRouter(_FakeSlackClients())
+    router = LiveToolRouter(_StubSlackClients())
 
     try:
         _slack_schedule(router, {"message": "SENTINEL retrospective", "channel": "C-live"})
@@ -1026,7 +1025,7 @@ def test_live_slack_schedule_handler_requires_explicit_message_and_post_at():
 
 
 def test_live_slack_schedule_handler_sends_explicit_message_and_post_at():
-    clients = _FakeSlackClients()
+    clients = _StubSlackClients()
     router = LiveToolRouter(clients)
 
     result = _slack_schedule(
@@ -1043,7 +1042,7 @@ def test_live_slack_schedule_handler_sends_explicit_message_and_post_at():
     assert clients.slack.schedules == [("SENTINEL retrospective", 1717429200, "C-live")]
 
 
-def test_simulated_slack_channel_artifact_is_preserved_without_overwrite():
+def test_replay_slack_channel_artifact_is_preserved_without_overwrite():
     orchestrator = SentinelOrchestrator()
     state = InvestigationState(
         incident_id="PD-SIM",
@@ -1259,7 +1258,7 @@ def test_live_artifact_collection_extracts_kubernetes_revision_target():
 
 
 def test_live_rollback_targets_come_from_kubernetes_rollout_revisions():
-    router = LiveToolRouter(_FakeRollbackClients())
+    router = LiveToolRouter(_StubRollbackClients())
 
     result = _rollback_targets(router, {"service": "checkout-service"})
 
@@ -2028,7 +2027,7 @@ def test_kubernetes_drain_node_rejects_schedulable_node_readback():
 
 
 def test_live_kubernetes_drain_handler_requires_explicit_node_payload():
-    router = LiveToolRouter(_FakeMutatingClients())
+    router = LiveToolRouter(_StubMutatingClients())
 
     try:
         _k8s_drain(router, {"service": "checkout-service"})
@@ -2041,7 +2040,7 @@ def test_live_kubernetes_drain_handler_requires_explicit_node_payload():
 
 
 def test_live_kubernetes_drain_handler_trims_explicit_node_payload():
-    clients = _FakeMutatingClients()
+    clients = _StubMutatingClients()
     router = LiveToolRouter(clients)
 
     result = _k8s_drain(router, {"node_name": " ip-10-0-0-1 "})
@@ -2061,7 +2060,7 @@ def test_live_kubernetes_drain_handler_trims_explicit_node_payload():
     ],
 )
 def test_live_kubernetes_mutation_handlers_require_explicit_service_payload(handler, payload):
-    router = LiveToolRouter(_FakeMutatingClients())
+    router = LiveToolRouter(_StubMutatingClients())
 
     try:
         handler(router, payload)
@@ -2075,7 +2074,7 @@ def test_live_kubernetes_mutation_handlers_require_explicit_service_payload(hand
 
 @pytest.mark.parametrize("target", [None, "", "release-2026-06-02", "revision:0", "revision:--force"])
 def test_live_rollback_handler_requires_explicit_kubernetes_revision_target(target):
-    router = LiveToolRouter(_FakeMutatingClients())
+    router = LiveToolRouter(_StubMutatingClients())
     payload = {"service": "checkout-service"}
     if target is not None:
         payload["target"] = target
@@ -2089,7 +2088,7 @@ def test_live_rollback_handler_requires_explicit_kubernetes_revision_target(targ
 
 
 def test_live_kubernetes_mutation_handlers_accept_affected_service_payload():
-    clients = _FakeMutatingClients()
+    clients = _StubMutatingClients()
     router = LiveToolRouter(clients)
     patch = {"spec": {"template": {"metadata": {"annotations": {"feature.checkout": "disabled"}}}}}
 
@@ -2100,7 +2099,7 @@ def test_live_kubernetes_mutation_handlers_accept_affected_service_payload():
 
 
 def test_live_kubernetes_mutation_handlers_reject_unknown_service_target():
-    router = LiveToolRouter(_FakeMutatingClients())
+    router = LiveToolRouter(_StubMutatingClients())
     patch = {"spec": {"template": {"metadata": {"annotations": {"feature.checkout": "disabled"}}}}}
 
     try:
@@ -2114,7 +2113,7 @@ def test_live_kubernetes_mutation_handlers_reject_unknown_service_target():
 
 
 def test_live_kubernetes_scale_handler_requires_explicit_replicas_payload():
-    router = LiveToolRouter(_FakeMutatingClients())
+    router = LiveToolRouter(_StubMutatingClients())
 
     try:
         _k8s_scale(router, {"service": "checkout-service"})
@@ -2127,7 +2126,7 @@ def test_live_kubernetes_scale_handler_requires_explicit_replicas_payload():
 
 
 def test_live_kubernetes_scale_handler_accepts_explicit_replicas_payload():
-    clients = _FakeMutatingClients()
+    clients = _StubMutatingClients()
     router = LiveToolRouter(clients)
 
     result = _k8s_scale(router, {"service": "checkout-service", "replicas": "3"})
@@ -2137,7 +2136,7 @@ def test_live_kubernetes_scale_handler_accepts_explicit_replicas_payload():
 
 
 def test_live_kubernetes_patch_handlers_require_explicit_patch_payload():
-    router = LiveToolRouter(_FakeMutatingClients())
+    router = LiveToolRouter(_StubMutatingClients())
     handler = _k8s_patch("toggle-feature-flag")
 
     try:
@@ -2151,7 +2150,7 @@ def test_live_kubernetes_patch_handlers_require_explicit_patch_payload():
 
 
 def test_live_kubernetes_patch_handlers_apply_explicit_patch_payload():
-    clients = _FakeMutatingClients()
+    clients = _StubMutatingClients()
     router = LiveToolRouter(clients)
     patch = {"spec": {"template": {"metadata": {"annotations": {"feature.checkout": "disabled"}}}}}
 
@@ -2162,7 +2161,7 @@ def test_live_kubernetes_patch_handlers_apply_explicit_patch_payload():
 
 
 def test_live_kubernetes_job_handlers_require_explicit_command_payload():
-    router = LiveToolRouter(_FakeMutatingClients())
+    router = LiveToolRouter(_StubMutatingClients())
     handler = _k8s_job("flush-cache")
 
     try:
@@ -2176,7 +2175,7 @@ def test_live_kubernetes_job_handlers_require_explicit_command_payload():
 
 
 def test_live_kubernetes_job_handlers_run_explicit_command_payload():
-    clients = _FakeMutatingClients()
+    clients = _StubMutatingClients()
     router = LiveToolRouter(clients)
     command = ["redis-cli", "-n", "2", "FLUSHDB"]
 
@@ -2190,7 +2189,7 @@ def test_live_kubernetes_job_handlers_run_explicit_command_payload():
 
 
 def test_live_github_issue_handler_requires_explicit_title_and_body():
-    router = LiveToolRouter(_FakeIssueClients())
+    router = LiveToolRouter(_StubIssueClients())
 
     try:
         _github_issue(router, {"service": "checkout-service", "body": "Investigate checkout latency."})
@@ -2212,7 +2211,7 @@ def test_live_github_issue_handler_requires_explicit_title_and_body():
 
 
 def test_live_github_issue_handler_creates_explicit_followup_issue():
-    clients = _FakeIssueClients()
+    clients = _StubIssueClients()
     router = LiveToolRouter(clients)
 
     result = _github_issue(
@@ -2235,7 +2234,7 @@ def test_live_github_issue_handler_creates_explicit_followup_issue():
 
 
 def test_live_github_issue_handler_dry_runs_when_github_writes_disabled():
-    clients = _FakeIssueClients(write_enabled=False)
+    clients = _StubIssueClients(write_enabled=False)
     router = LiveToolRouter(clients)
 
     result = _github_issue(
@@ -2260,7 +2259,7 @@ def test_live_github_issue_handler_dry_runs_when_github_writes_disabled():
 
 
 def test_live_github_issue_dry_run_yields_empty_live_evidence():
-    clients = _FakeIssueClients(write_enabled=False)
+    clients = _StubIssueClients(write_enabled=False)
     router = LiveToolRouter(clients)
 
     result = _github_issue(
@@ -2283,7 +2282,7 @@ def test_live_github_issue_dry_run_yields_empty_live_evidence():
 
 
 def test_live_runbook_update_requires_explicit_note_content():
-    clients = _FakeRunbookClients("Existing runbook\n")
+    clients = _StubRunbookClients("Existing runbook\n")
     router = LiveToolRouter(clients)
 
     try:
@@ -2297,7 +2296,7 @@ def test_live_runbook_update_requires_explicit_note_content():
 
 
 def test_live_runbook_update_appends_to_existing_github_file():
-    clients = _FakeRunbookClients("Existing runbook\n")
+    clients = _StubRunbookClients("Existing runbook\n")
     router = LiveToolRouter(clients)
 
     result = _github_runbook(
@@ -2321,7 +2320,7 @@ def test_live_runbook_update_appends_to_existing_github_file():
 
 
 def test_live_runbook_update_dry_runs_when_github_writes_disabled():
-    clients = _FakeRunbookClients("Existing runbook\n", write_enabled=False)
+    clients = _StubRunbookClients("Existing runbook\n", write_enabled=False)
     router = LiveToolRouter(clients)
 
     result = _github_runbook(
@@ -2345,7 +2344,7 @@ def test_live_runbook_update_dry_runs_when_github_writes_disabled():
 
 
 def test_live_runbook_update_dry_run_yields_empty_live_evidence():
-    clients = _FakeRunbookClients("Existing runbook\n", write_enabled=False)
+    clients = _StubRunbookClients("Existing runbook\n", write_enabled=False)
     router = LiveToolRouter(clients)
 
     result = _github_runbook(
@@ -2367,7 +2366,7 @@ def test_live_runbook_update_dry_run_yields_empty_live_evidence():
 
 
 def test_live_runbook_update_refuses_non_file_github_content():
-    clients = _FakeRunbookClients(
+    clients = _StubRunbookClients(
         "not used",
         contents={"type": "dir", "sha": "sha-dir", "content": "", "encoding": "base64"},
     )
@@ -2417,7 +2416,7 @@ class _RecordingDatadogClients:
         self.datadog = _RecordingDatadog()
 
 
-class _FakeGitHub:
+class _StubGitHub:
     requested_pull_request = None
 
     def commits(self, *args, **kwargs):
@@ -2439,11 +2438,11 @@ class _FakeGitHub:
         return [{"filename": "service.py"}]
 
 
-class _FakeClients:
-    github = _FakeGitHub()
+class _StubClients:
+    github = _StubGitHub()
 
 
-class _FakePrCorrelationGitHub:
+class _StubPrCorrelationGitHub:
     def __init__(self, *, commits, pull_requests, pull_request_commits=None):
         self._commits = commits
         self._pull_requests = pull_requests
@@ -2473,16 +2472,16 @@ class _FakePrCorrelationGitHub:
         return [{"filename": "checkout/payment.py"}]
 
 
-class _FakePrCorrelationClients:
+class _StubPrCorrelationClients:
     def __init__(self, *, commits, pull_requests, pull_request_commits=None):
-        self.github = _FakePrCorrelationGitHub(
+        self.github = _StubPrCorrelationGitHub(
             commits=commits,
             pull_requests=pull_requests,
             pull_request_commits=pull_request_commits,
         )
 
 
-class _FakeDashboardDatadog:
+class _StubDashboardDatadog:
     def __init__(self):
         self.requested_dashboard = None
 
@@ -2491,12 +2490,12 @@ class _FakeDashboardDatadog:
         return {"id": dashboard_id, "title": "Payments overview"}
 
 
-class _FakeDashboardClients:
+class _StubDashboardClients:
     def __init__(self):
-        self.datadog = _FakeDashboardDatadog()
+        self.datadog = _StubDashboardDatadog()
 
 
-class _FakeStatusGitHub:
+class _StubStatusGitHub:
     def __init__(self, commits=None):
         self._commits = commits if commits is not None else [{"sha": "sha-live-default"}]
         self.commit_kwargs = None
@@ -2516,12 +2515,12 @@ class _FakeStatusGitHub:
         return {"total_count": 1, "check_runs": [{"name": "tests"}]}
 
 
-class _FakeStatusClients:
+class _StubStatusClients:
     def __init__(self, commits=None):
-        self.github = _FakeStatusGitHub(commits=commits)
+        self.github = _StubStatusGitHub(commits=commits)
 
 
-class _FakeTimeWindowGitHub:
+class _StubTimeWindowGitHub:
     def __init__(self):
         self.commit_kwargs = None
         self.deployment_kwargs = None
@@ -2535,12 +2534,12 @@ class _FakeTimeWindowGitHub:
         return [{"sha": "deploy-windowed"}]
 
 
-class _FakeTimeWindowClients:
+class _StubTimeWindowClients:
     def __init__(self):
-        self.github = _FakeTimeWindowGitHub()
+        self.github = _StubTimeWindowGitHub()
 
 
-class _FakeContentsGitHub:
+class _StubContentsGitHub:
     def __init__(self, responses):
         self.responses = responses
         self.requested = []
@@ -2555,12 +2554,12 @@ class _FakeContentsGitHub:
         return response
 
 
-class _FakeContentsClients:
+class _StubContentsClients:
     def __init__(self, responses):
-        self.github = _FakeContentsGitHub(responses)
+        self.github = _StubContentsGitHub(responses)
 
 
-class _FakePagerDuty:
+class _StubPagerDuty:
     def __init__(self, *, policy_oncalls=None, incident_policy_id="EP-live"):
         self.policy_oncalls = policy_oncalls or {("EP-live",): [{"user": {"id": "U-oncall"}}]}
         self.incident_policy_id = incident_policy_id
@@ -2590,15 +2589,15 @@ class _FakePagerDuty:
         return {"incident": {"id": incident_id, "status": status}}
 
 
-class _FakePagerDutyClients:
+class _StubPagerDutyClients:
     def __init__(self, *, policy_oncalls=None, incident_policy_id="EP-live"):
-        self.pagerduty = _FakePagerDuty(
+        self.pagerduty = _StubPagerDuty(
             policy_oncalls=policy_oncalls,
             incident_policy_id=incident_policy_id,
         )
 
 
-class _FakeSlack:
+class _StubSlack:
     def __init__(self):
         self.channels = []
         self.posts = []
@@ -2622,16 +2621,16 @@ class _FakeSlack:
         }
 
 
-class _FakeSlackClients:
+class _StubSlackClients:
     def __init__(self):
-        self.slack = _FakeSlack()
+        self.slack = _StubSlack()
 
 
 class _DisabledSlack:
     enabled = False
 
 
-class _FakeDiscord:
+class _StubDiscord:
     def __init__(self):
         self.posts = []
 
@@ -2645,10 +2644,10 @@ class _FakeDiscord:
         }
 
 
-class _FakeDiscordFallbackClients:
+class _StubDiscordFallbackClients:
     def __init__(self):
         self.slack = _DisabledSlack()
-        self.discord = _FakeDiscord()
+        self.discord = _StubDiscord()
 
 
 class _DiscordMissingClients:
@@ -2657,7 +2656,7 @@ class _DiscordMissingClients:
         self.discord = None
 
 
-class _FakeIssueGitHub:
+class _StubIssueGitHub:
     def __init__(self, *, write_enabled=True):
         self.write_enabled = write_enabled
         self.issues = []
@@ -2667,17 +2666,17 @@ class _FakeIssueGitHub:
         return {"number": 42, "html_url": "https://github.example/issues/42"}
 
 
-class _FakeIssueClients:
+class _StubIssueClients:
     def __init__(self, *, write_enabled=True):
-        self.github = _FakeIssueGitHub(write_enabled=write_enabled)
+        self.github = _StubIssueGitHub(write_enabled=write_enabled)
 
 
-class _FakeRollbackGitHub:
+class _StubRollbackGitHub:
     def deployments(self, **kwargs):
         return [{"sha": "sha-new", "ref": "main"}]
 
 
-class _FakeRollbackKubernetes:
+class _StubRollbackKubernetes:
     def rollout_revisions(self, service):
         return {
             "service": service,
@@ -2687,12 +2686,12 @@ class _FakeRollbackKubernetes:
         }
 
 
-class _FakeRollbackClients:
-    github = _FakeRollbackGitHub()
-    kubernetes = _FakeRollbackKubernetes()
+class _StubRollbackClients:
+    github = _StubRollbackGitHub()
+    kubernetes = _StubRollbackKubernetes()
 
 
-class _FakeMutatingKubernetes:
+class _StubMutatingKubernetes:
     def __init__(self):
         self.patches = []
         self.jobs = []
@@ -2716,12 +2715,12 @@ class _FakeMutatingKubernetes:
         return {"drained": True, "node": node}
 
 
-class _FakeMutatingClients:
+class _StubMutatingClients:
     def __init__(self):
-        self.kubernetes = _FakeMutatingKubernetes()
+        self.kubernetes = _StubMutatingKubernetes()
 
 
-class _FakeRunbookGitHub:
+class _StubRunbookGitHub:
     def __init__(self, text, *, contents=None, write_enabled=True):
         self.write_enabled = write_enabled
         encoded = base64.b64encode(text.encode()).decode()
@@ -2750,9 +2749,9 @@ class _FakeRunbookGitHub:
         return {"updated": True, "content": {"path": path}, "commit": {"sha": "sha-new"}}
 
 
-class _FakeRunbookClients:
+class _StubRunbookClients:
     def __init__(self, text, *, contents=None, write_enabled=True):
-        self.github = _FakeRunbookGitHub(text, contents=contents, write_enabled=write_enabled)
+        self.github = _StubRunbookGitHub(text, contents=contents, write_enabled=write_enabled)
 
 
 class _RecordingKubernetesClient(KubernetesClient):

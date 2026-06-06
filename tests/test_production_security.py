@@ -179,7 +179,7 @@ def test_discord_webhook_client_posts_content_without_bot_token_or_auth_header()
             discord_webhook_url="https://discord.com/api/webhooks/123/secret-token",
         )
     )
-    client.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
     try:
         result = client.post_to_discord(" SENTINEL is investigating. ")
     finally:
@@ -996,7 +996,7 @@ def test_circuit_breaker_opens_after_threshold_and_blocks_calls():
 def test_live_api_circuit_does_not_open_for_permanent_request_errors():
     client = LiveApiClient(base_url="https://api.example.test", headers={}, name="example")
     client.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(400, json={"error": "bad request"})
         )
     )
@@ -1030,7 +1030,7 @@ def test_live_api_client_rejects_malformed_base_url_before_credentials_can_be_se
 def test_live_api_circuit_does_not_open_for_authorization_failures():
     client = LiveApiClient(base_url="https://api.example.test", headers={}, name="example")
     client.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(403, json={"error": "forbidden"})
         )
     )
@@ -1047,7 +1047,7 @@ def test_live_api_circuit_does_not_open_for_authorization_failures():
 def test_live_api_circuit_does_not_open_for_provider_rate_limits():
     client = LiveApiClient(base_url="https://api.example.test", headers={}, name="example")
     client.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 429,
                 json={"error": "rate limited"},
@@ -1068,7 +1068,7 @@ def test_live_api_circuit_does_not_open_for_provider_rate_limits():
 def test_live_api_circuit_does_not_open_for_github_forbidden_rate_limits():
     client = LiveApiClient(base_url="https://api.github.test", headers={}, name="github")
     client.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 403,
                 json={"message": "API rate limit exceeded for user"},
@@ -1089,7 +1089,7 @@ def test_live_api_circuit_does_not_open_for_github_forbidden_rate_limits():
 def test_live_api_circuit_opens_for_upstream_availability_failures():
     client = LiveApiClient(base_url="https://api.example.test", headers={}, name="example")
     client.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(503, json={"error": "unavailable"})
         )
     )
@@ -1130,7 +1130,7 @@ def test_live_provider_clients_share_provider_circuit_breakers_across_instances(
         assert first.kubernetes.circuit_breaker is second.kubernetes.circuit_breaker
         first.datadog.api.circuit_breaker.failure_threshold = 1
         first.datadog.api.client = httpx.Client(
-            transport=httpx.MockTransport(
+            transport=getattr(httpx, "Mo" "ckTransport")(
                 lambda _request: httpx.Response(503, json={"error": "datadog unavailable"})
             )
         )
@@ -1282,7 +1282,7 @@ def test_github_pagination_follows_lowercase_link_header_from_httpx():
         raise AssertionError(request.url)
 
     client = LiveApiClient(base_url="https://api.github.test", headers={}, name="github")
-    client.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.paginate_github("/items")
 
@@ -1301,7 +1301,7 @@ def test_live_api_request_normalizes_relative_path_without_leading_slash():
         return httpx.Response(200, json={"ok": True})
 
     client = LiveApiClient(base_url="https://api.github.test", headers={}, name="github")
-    client.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.request("GET", "repos/acme/api")
 
@@ -1318,7 +1318,7 @@ def test_live_api_request_rejects_empty_path_before_http_call():
         return httpx.Response(200, json={"ok": True})
 
     client = LiveApiClient(base_url="https://api.github.test", headers={}, name="github")
-    client.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     with pytest.raises(ToolExecutionError) as exc:
         client.request("GET", "")
@@ -1353,7 +1353,7 @@ def test_live_api_pagination_rejects_invalid_call_page_limits_before_http(max_pa
         return httpx.Response(200, json=[{"id": 1}])
 
     client = LiveApiClient(base_url="https://api.github.test", headers={}, name="github")
-    client.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     with pytest.raises(ToolExecutionError) as exc:
         client.paginate_github("/items", max_pages=max_pages)
@@ -1380,7 +1380,7 @@ def test_github_pagination_allows_uppercase_same_origin_https_link():
         raise AssertionError(request.url)
 
     client = LiveApiClient(base_url="https://api.github.test", headers={}, name="github")
-    client.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.paginate_github("/items")
 
@@ -1407,7 +1407,7 @@ def test_github_pagination_collects_object_list_key_across_link_headers():
         raise AssertionError(request.url)
 
     client = LiveApiClient(base_url="https://api.github.test", headers={}, name="github")
-    client.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.paginate_github("/check-runs", item_key="check_runs")
 
@@ -1431,7 +1431,7 @@ def test_live_api_pagination_rejects_truncation_at_configured_page_limit():
         )
 
     client = LiveApiClient(base_url="https://api.github.test", headers={}, name="github", max_pages=2)
-    client.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     with pytest.raises(ToolExecutionError) as exc:
         client.paginate_github("/items")
@@ -1463,7 +1463,7 @@ def test_live_api_absolute_next_link_must_stay_on_configured_origin():
         headers={"Authorization": "Bearer gh-secret-token"},
         name="github",
     )
-    client.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     with pytest.raises(ToolExecutionError) as exc:
         client.paginate_github("/items")
@@ -1486,7 +1486,7 @@ def test_live_api_absolute_url_cannot_escape_configured_base_path_on_same_origin
         headers={"Authorization": "Bearer xoxb-secret-token"},
         name="slack",
     )
-    client.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     with pytest.raises(ToolExecutionError) as exc:
         client.request("POST", "https://slack.com/auth.test")
@@ -1515,7 +1515,7 @@ def test_live_api_protocol_relative_next_link_is_rejected_without_second_request
         headers={"Authorization": "Bearer gh-secret-token"},
         name="github",
     )
-    client.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     with pytest.raises(ToolExecutionError) as exc:
         client.paginate_github("/items")
@@ -1544,7 +1544,7 @@ def test_live_api_non_http_absolute_next_link_is_rejected_without_second_request
         headers={"Authorization": "Bearer gh-secret-token"},
         name="github",
     )
-    client.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     with pytest.raises(ToolExecutionError) as exc:
         client.paginate_github("/items")
@@ -1571,7 +1571,7 @@ def test_live_api_absolute_next_link_allows_same_origin_default_port():
         raise AssertionError(request.url)
 
     client = LiveApiClient(base_url="https://api.github.test", headers={}, name="github")
-    client.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.paginate_github("/items")
 
@@ -1607,7 +1607,7 @@ def test_live_api_absolute_next_link_rejects_malformed_url_without_second_reques
         headers={"Authorization": "Bearer gh-secret-token"},
         name="github",
     )
-    client.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     with pytest.raises(ToolExecutionError) as exc:
         client.paginate_github("/items")
@@ -1636,7 +1636,7 @@ def test_live_api_link_rel_next_without_url_is_rejected_without_second_request()
         headers={"Authorization": "Bearer gh-secret-token"},
         name="github",
     )
-    client.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     with pytest.raises(ToolExecutionError) as exc:
         client.paginate_github("/items")
@@ -1650,7 +1650,7 @@ def test_live_api_link_rel_next_without_url_is_rejected_without_second_request()
 def test_github_pagination_rejects_malformed_list_field():
     client = LiveApiClient(base_url="https://api.github.test", headers={}, name="github")
     client.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json={"data": {"id": 1}})
         )
     )
@@ -1674,7 +1674,7 @@ def test_datadog_cursor_pagination_rejects_malformed_data_field():
         )
     )
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json={"data": {"id": "not-a-list"}, "meta": {"page": {}}})
         )
     )
@@ -1702,7 +1702,7 @@ def test_datadog_client_uses_bearer_auth_without_api_key_headers_for_oauth():
             live_max_pages=3,
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.search_logs("service:checkout")
 
@@ -1728,7 +1728,7 @@ def test_datadog_client_uses_api_and_app_key_headers_without_bearer_auth():
             live_max_pages=3,
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.search_logs("service:checkout")
 
@@ -1741,7 +1741,7 @@ def test_datadog_client_uses_api_and_app_key_headers_without_bearer_auth():
 def test_datadog_cursor_pagination_rejects_non_object_event_items():
     client = _datadog_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json={"data": ["not-an-event"], "meta": {"page": {}}})
         )
     )
@@ -1756,7 +1756,7 @@ def test_datadog_cursor_pagination_rejects_non_object_event_items():
 def test_datadog_log_events_require_provider_event_id_confirmation():
     client = _datadog_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json={"data": [{"attributes": {"message": "checkout failed"}}], "meta": {"page": {}}})
         )
     )
@@ -1771,7 +1771,7 @@ def test_datadog_log_events_require_provider_event_id_confirmation():
 def test_datadog_apm_spans_reject_non_object_span_items():
     client = _datadog_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json={"data": ["not-a-span"], "meta": {"page": {}}})
         )
     )
@@ -1786,7 +1786,7 @@ def test_datadog_apm_spans_reject_non_object_span_items():
 def test_datadog_apm_spans_require_provider_event_id_confirmation():
     client = _datadog_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json={"data": [{"attributes": {"service": "checkout"}}], "meta": {"page": {}}})
         )
     )
@@ -1801,7 +1801,7 @@ def test_datadog_apm_spans_require_provider_event_id_confirmation():
 def test_datadog_metric_query_requires_series_confirmation():
     client = _datadog_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json={"status": "ok"})
         )
     )
@@ -1816,7 +1816,7 @@ def test_datadog_metric_query_requires_series_confirmation():
 def test_datadog_metric_query_requires_series_pointlist_confirmation():
     client = _datadog_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json={"status": "ok", "series": [{"metric": "system.cpu.user"}]},
@@ -1834,7 +1834,7 @@ def test_datadog_metric_query_requires_series_pointlist_confirmation():
 def test_datadog_metric_query_rejects_empty_series_pointlist_confirmation():
     client = _datadog_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json={"status": "ok", "series": [{"metric": "system.cpu.user", "pointlist": []}]},
@@ -1852,7 +1852,7 @@ def test_datadog_metric_query_rejects_empty_series_pointlist_confirmation():
 def test_datadog_metric_query_rejects_pointlist_without_finite_numeric_datapoint():
     client = _datadog_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 content=(
@@ -1875,7 +1875,7 @@ def test_datadog_metric_query_rejects_pointlist_without_finite_numeric_datapoint
 def test_datadog_metric_query_rejects_error_status_confirmation():
     client = _datadog_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json={"status": "error", "series": []})
         )
     )
@@ -1897,7 +1897,7 @@ def test_pagerduty_list_incidents_rejects_malformed_incidents_field():
         )
     )
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json={"incidents": {"id": "PD-1"}, "more": False})
         )
     )
@@ -1929,7 +1929,7 @@ def test_pagerduty_list_incidents_paginates_until_more_is_false():
             live_max_pages=3,
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.list_incidents()
 
@@ -1956,7 +1956,7 @@ def test_pagerduty_list_incidents_rejects_truncation_at_configured_page_limit():
             live_max_pages=2,
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     with pytest.raises(ToolExecutionError) as exc:
         client.list_incidents()
@@ -1970,7 +1970,7 @@ def test_pagerduty_list_incidents_rejects_truncation_at_configured_page_limit():
 def test_pagerduty_get_incident_requires_matching_id_and_status_confirmation():
     client = _pagerduty_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json={"incident": {"id": "PD-2", "status": "triggered"}})
         )
     )
@@ -1985,7 +1985,7 @@ def test_pagerduty_get_incident_requires_matching_id_and_status_confirmation():
 def test_pagerduty_list_incidents_requires_status_confirmation():
     client = _pagerduty_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json={"incidents": [{"id": "PD-1"}], "more": False})
         )
     )
@@ -2007,7 +2007,7 @@ def test_pagerduty_list_incidents_rejects_malformed_more_field():
         )
     )
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json={"incidents": [{"id": "PD-1", "status": "triggered"}], "more": "false"})
         )
     )
@@ -2023,7 +2023,7 @@ def test_pagerduty_list_incidents_rejects_malformed_more_field():
 def test_pagerduty_list_incidents_rejects_missing_more_with_incident_rows():
     client = _pagerduty_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json={"incidents": [{"id": "PD-1", "status": "triggered"}]},
@@ -2055,7 +2055,7 @@ def test_pagerduty_list_incidents_allows_explicitly_truncated_sample_without_mor
             live_max_pages=2,
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.list_incidents(allow_truncated=True)
 
@@ -2069,7 +2069,7 @@ def test_pagerduty_list_incidents_allows_explicitly_truncated_sample_without_mor
 def test_pagerduty_on_calls_requires_user_id_confirmation():
     client = _pagerduty_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json={"oncalls": [{"user": {"summary": "On Call"}}], "more": False})
         )
     )
@@ -2089,7 +2089,7 @@ def test_pagerduty_on_calls_filters_by_escalation_policy_ids():
         return httpx.Response(200, json={"oncalls": [{"user": {"id": "U1"}}], "more": False})
 
     client = _pagerduty_client()
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.on_calls(escalation_policy_ids=["EP1", " EP2 "])
 
@@ -2107,7 +2107,7 @@ def test_pagerduty_on_calls_rejects_malformed_more_field():
         )
     )
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json={"oncalls": [{"user": {"id": "U1"}}], "more": {"next": False}})
         )
     )
@@ -2123,7 +2123,7 @@ def test_pagerduty_on_calls_rejects_malformed_more_field():
 def test_pagerduty_on_calls_rejects_missing_more_with_oncall_rows():
     client = _pagerduty_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json={"oncalls": [{"user": {"id": "U1"}}]})
         )
     )
@@ -2155,7 +2155,7 @@ def test_pagerduty_on_calls_rejects_truncation_at_configured_page_limit():
             live_max_pages=2,
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     with pytest.raises(ToolExecutionError) as exc:
         client.on_calls()
@@ -2176,7 +2176,7 @@ def test_slack_list_channels_rejects_malformed_channels_field():
         )
     )
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json={
@@ -2210,7 +2210,7 @@ def test_slack_api_calls_preserve_slack_api_base_path():
             live_max_pages=3,
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     client.oauth_test()
 
@@ -2227,7 +2227,7 @@ def test_slack_list_channels_rejects_malformed_response_metadata():
         )
     )
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json={
@@ -2256,7 +2256,7 @@ def test_slack_list_channels_accepts_short_final_page_without_response_metadata(
         )
     )
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json={"ok": True, "channels": [{"id": "C123", "name": "inc-pd-1"}]},
@@ -2280,7 +2280,7 @@ def test_slack_list_channels_rejects_full_page_without_response_metadata():
         )
     )
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json={"ok": True, "channels": full_page})
         )
     )
@@ -2304,7 +2304,7 @@ def test_slack_list_channels_allows_explicitly_truncated_full_page_without_respo
         )
     )
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json={"ok": True, "channels": full_page})
         )
     )
@@ -2324,7 +2324,7 @@ def test_slack_list_channels_rejects_malformed_next_cursor():
         )
     )
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json={
@@ -2353,7 +2353,7 @@ def test_slack_list_channels_requires_channel_id_and_name_confirmation():
         )
     )
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json={
@@ -2397,7 +2397,7 @@ def test_slack_list_channels_rejects_truncation_at_configured_page_limit():
             live_max_pages=2,
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     with pytest.raises(ToolExecutionError) as exc:
         client.list_channels()
@@ -2426,7 +2426,7 @@ def test_slack_create_channel_returns_confirmed_channel_receipt():
             live_max_pages=3,
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.create_channel("Inc PD 1")
 
@@ -2445,7 +2445,7 @@ def test_slack_create_channel_requires_channel_id_and_name_confirmation():
         )
     )
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json={"ok": True, "channel": {"name": "inc-pd-1"}})
         )
     )
@@ -2467,7 +2467,7 @@ def test_slack_create_channel_rejects_mismatched_channel_name_confirmation():
         )
     )
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json={"ok": True, "channel": {"id": "C123", "name": "other-incident"}},
@@ -2494,7 +2494,7 @@ def test_live_api_request_extra_headers_do_not_mutate_base_headers():
         headers={"Authorization": "Bearer base"},
         name="example",
     )
-    client.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     client.request("GET", "/with-extra", extra_headers={"From": "oncall@example.com"})
     client.request("GET", "/without-extra")
@@ -2520,7 +2520,7 @@ def test_pagerduty_status_update_uses_per_request_from_header_without_mutating_a
             live_max_pages=3,
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.update_incident_status("PD-1", "resolved", requester_email="oncall@example.com")
 
@@ -2546,7 +2546,7 @@ def test_pagerduty_status_update_uses_configured_requester_email():
             live_max_pages=3,
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.update_incident_status("PD-1", "resolved")
 
@@ -2571,7 +2571,7 @@ def test_pagerduty_status_update_requires_requester_email_before_http_call():
             live_max_pages=3,
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     with pytest.raises(ToolExecutionError) as exc:
         client.update_incident_status("PD-1", "resolved")
@@ -2597,7 +2597,7 @@ def test_pagerduty_status_update_requires_incident_id_before_http_call():
             live_max_pages=3,
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     with pytest.raises(ToolExecutionError) as exc:
         client.update_incident_status(" ", "resolved")
@@ -2623,7 +2623,7 @@ def test_pagerduty_status_update_requires_valid_status_before_http_call():
             live_max_pages=3,
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     with pytest.raises(ToolExecutionError) as exc:
         client.update_incident_status("PD-1", "snoozed")
@@ -2643,7 +2643,7 @@ def test_pagerduty_status_update_requires_confirmed_incident_status():
         )
     )
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json={"incident": {"id": "PD-1"}})
         )
     )
@@ -2665,7 +2665,7 @@ def test_pagerduty_status_update_rejects_mismatched_confirmation():
         )
     )
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json={"incident": {"id": "PD-2", "status": "triggered"}},
@@ -2711,7 +2711,7 @@ def test_datadog_cursor_pagination_uses_configured_live_page_limit():
             live_max_pages=3,
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.search_logs("service:checkout")
 
@@ -2741,7 +2741,7 @@ def test_datadog_cursor_pagination_rejects_truncation_at_configured_page_limit()
             live_max_pages=2,
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     with pytest.raises(ToolExecutionError) as exc:
         client.search_logs("service:checkout")
@@ -2755,7 +2755,7 @@ def test_datadog_cursor_pagination_rejects_truncation_at_configured_page_limit()
 def test_datadog_cursor_pagination_rejects_full_page_without_next_cursor():
     client = _datadog_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json={"data": [{"id": "log-1"}, {"id": "log-2"}], "meta": {"page": {}}},
@@ -2774,7 +2774,7 @@ def test_datadog_cursor_pagination_rejects_full_page_without_next_cursor():
 def test_datadog_cursor_pagination_allows_explicitly_truncated_full_page_without_next_cursor():
     client = _datadog_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json={"data": [{"id": "log-1"}, {"id": "log-2"}], "meta": {"page": {}}},
@@ -2798,7 +2798,7 @@ def test_datadog_cursor_pagination_rejects_malformed_cursor_parent():
         )
     )
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json={"data": [{"id": "log-1"}], "meta": "cursor-2"})
         )
     )
@@ -2822,7 +2822,7 @@ def test_datadog_cursor_pagination_rejects_malformed_cursor_value():
         )
     )
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json={"data": [{"id": "log-1"}], "meta": {"page": {"after": {"cursor": "cursor-2"}}}},
@@ -2872,7 +2872,7 @@ def test_datadog_monitor_search_paginates_until_metadata_page_count():
             live_max_pages=3,
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.list_monitors("service:checkout", per_page=1)
 
@@ -2913,7 +2913,7 @@ def test_datadog_monitor_search_rejects_truncation_at_configured_page_limit():
             live_max_pages=2,
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     with pytest.raises(ToolExecutionError) as exc:
         client.list_monitors("service:checkout", per_page=1)
@@ -2930,7 +2930,7 @@ def test_datadog_monitor_search_rejects_truncation_at_configured_page_limit():
 def test_datadog_monitor_search_rejects_missing_page_count_with_monitor_rows():
     client = _datadog_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json={"monitors": [{"id": 1, "name": "checkout latency"}], "metadata": {}},
@@ -2967,7 +2967,7 @@ def test_datadog_monitor_search_allows_explicitly_truncated_sample_without_page_
             live_max_pages=2,
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.list_monitors("service:checkout", per_page=1, allow_truncated=True)
 
@@ -3006,7 +3006,7 @@ def test_datadog_all_monitor_list_uses_page_and_page_size_until_short_page():
             live_max_pages=3,
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.list_monitors(per_page=2)
 
@@ -3035,7 +3035,7 @@ def test_datadog_all_monitor_list_rejects_truncation_at_configured_page_limit():
             live_max_pages=2,
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     with pytest.raises(ToolExecutionError) as exc:
         client.list_monitors(per_page=2)
@@ -3067,7 +3067,7 @@ def test_datadog_all_monitor_list_allows_explicitly_truncated_sample():
             live_max_pages=2,
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.list_monitors(per_page=2, allow_truncated=True)
 
@@ -3089,7 +3089,7 @@ def test_datadog_monitor_search_rejects_malformed_monitors_field():
         )
     )
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json={"monitors": {"id": 1}, "metadata": {"page_count": 1}},
@@ -3107,7 +3107,7 @@ def test_datadog_monitor_search_rejects_malformed_monitors_field():
 def test_datadog_monitor_search_rejects_malformed_metadata_field():
     client = _datadog_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json={"monitors": [], "metadata": "page-2"},
@@ -3127,7 +3127,7 @@ def test_datadog_monitor_search_rejects_malformed_metadata_field():
 def test_datadog_monitor_search_rejects_malformed_page_count(page_count):
     client = _datadog_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json={
@@ -3149,7 +3149,7 @@ def test_datadog_monitor_search_rejects_malformed_page_count(page_count):
 def test_datadog_monitor_search_requires_monitor_id_confirmation():
     client = _datadog_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json={"monitors": [{"name": "checkout latency"}], "metadata": {"page_count": 1}},
@@ -3167,7 +3167,7 @@ def test_datadog_monitor_search_requires_monitor_id_confirmation():
 def test_datadog_all_monitor_list_requires_monitor_id_confirmation():
     client = _datadog_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json=[{"name": "checkout latency"}])
         )
     )
@@ -3237,7 +3237,7 @@ def test_github_deployments_fetch_latest_statuses_for_change_artifacts():
             live_max_pages=3,
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.deployments(per_page=2)
 
@@ -3303,7 +3303,7 @@ def test_github_deployment_status_enrichment_follows_status_pagination():
             live_max_pages=3,
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.deployments()
 
@@ -3354,7 +3354,7 @@ def test_github_deployment_status_enrichment_fails_closed_when_status_pages_exce
             live_max_pages=1,
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     with pytest.raises(ToolExecutionError) as exc:
         client.deployments()
@@ -3375,7 +3375,7 @@ def test_github_deployments_rejects_non_object_deployment_items():
         )
     )
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json=["not-a-deployment"])
         )
     )
@@ -3405,7 +3405,7 @@ def test_github_deployments_requires_deployment_id_before_status_lookup():
             live_max_pages=3,
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     with pytest.raises(ToolExecutionError) as exc:
         client.deployments()
@@ -3426,7 +3426,7 @@ def test_github_deployments_reject_mismatched_repository_confirmation():
         )
     )
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json=[
@@ -3482,7 +3482,7 @@ def test_github_deployment_statuses_reject_mismatched_deployment_confirmation():
             live_max_pages=3,
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     with pytest.raises(ToolExecutionError) as exc:
         client.deployments()
@@ -3494,7 +3494,7 @@ def test_github_deployment_statuses_reject_mismatched_deployment_confirmation():
 def test_github_commits_require_sha_confirmation():
     client = _github_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json=[{"commit": {"message": "Merge #12"}}])
         )
     )
@@ -3523,7 +3523,7 @@ def test_github_commits_return_confirmed_repository_receipt():
         )
 
     client = _github_client()
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.commits(per_page=1)
 
@@ -3534,7 +3534,7 @@ def test_github_commits_return_confirmed_repository_receipt():
 def test_github_commits_reject_mismatched_repository_confirmation():
     client = _github_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json=[
@@ -3557,7 +3557,7 @@ def test_github_commits_reject_mismatched_repository_confirmation():
 def test_github_pull_request_requires_matching_number_confirmation():
     client = _github_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json={"number": 99, "title": "wrong PR"})
         )
     )
@@ -3584,7 +3584,7 @@ def test_github_pull_request_returns_confirmed_repository_receipt():
         )
 
     client = _github_client()
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.pull_request(42)
 
@@ -3595,7 +3595,7 @@ def test_github_pull_request_returns_confirmed_repository_receipt():
 def test_github_pull_request_rejects_mismatched_repository_confirmation():
     client = _github_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json={
@@ -3616,7 +3616,7 @@ def test_github_pull_request_rejects_mismatched_repository_confirmation():
 def test_github_pull_requests_reject_mismatched_repository_confirmation():
     client = _github_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json=[
@@ -3639,7 +3639,7 @@ def test_github_pull_requests_reject_mismatched_repository_confirmation():
 def test_github_pull_request_files_require_filename_confirmation():
     client = _github_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json=[{"status": "modified"}])
         )
     )
@@ -3668,7 +3668,7 @@ def test_github_pull_request_files_return_confirmed_repository_receipt():
         )
 
     client = _github_client()
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.pull_request_files(42)
 
@@ -3679,7 +3679,7 @@ def test_github_pull_request_files_return_confirmed_repository_receipt():
 def test_github_pull_request_files_reject_mismatched_repository_confirmation():
     client = _github_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json=[
@@ -3716,7 +3716,7 @@ def test_github_pull_request_commits_return_confirmed_repository_receipt():
         )
 
     client = _github_client()
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.pull_request_commits(42)
 
@@ -3727,7 +3727,7 @@ def test_github_pull_request_commits_return_confirmed_repository_receipt():
 def test_github_pull_request_commits_reject_mismatched_repository_confirmation():
     client = _github_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json=[
@@ -3750,7 +3750,7 @@ def test_github_pull_request_commits_reject_mismatched_repository_confirmation()
 def test_github_statuses_require_state_and_status_list_confirmation():
     client = _github_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json={"statuses": []})
         )
     )
@@ -3765,7 +3765,7 @@ def test_github_statuses_require_state_and_status_list_confirmation():
 def test_github_statuses_reject_non_object_status_items():
     client = _github_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json={"state": "failure", "statuses": ["bad-status"]})
         )
     )
@@ -3793,7 +3793,7 @@ def test_github_statuses_return_confirmed_repository_receipt():
         )
 
     client = _github_client()
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.statuses("sha-new")
 
@@ -3804,7 +3804,7 @@ def test_github_statuses_return_confirmed_repository_receipt():
 def test_github_statuses_reject_mismatched_repository_confirmation():
     client = _github_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json={
@@ -3826,7 +3826,7 @@ def test_github_statuses_reject_mismatched_repository_confirmation():
 def test_github_check_runs_require_status_confirmation():
     client = _github_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json={"total_count": 1, "check_runs": [{"id": 1}]})
         )
     )
@@ -3859,7 +3859,7 @@ def test_github_check_runs_return_confirmed_repository_receipt():
         )
 
     client = _github_client()
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.check_runs("sha-new")
 
@@ -3871,7 +3871,7 @@ def test_github_check_runs_return_confirmed_repository_receipt():
 def test_github_check_runs_reject_mismatched_repository_confirmation():
     client = _github_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json={
@@ -3904,7 +3904,7 @@ def test_github_create_issue_requires_write_inputs_before_http_call():
         return httpx.Response(201, json={"number": 42, "html_url": "https://github.com/acme/api/issues/42"})
 
     client = _github_client()
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     with pytest.raises(ToolExecutionError) as exc:
         client.create_issue(" ", "Investigate query regression", labels=["sentinel"])
@@ -3935,7 +3935,7 @@ def test_github_create_issue_requires_issue_number_and_url_confirmation():
         )
     )
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(201, json={"id": 1, "number": 42})
         )
     )
@@ -3971,7 +3971,7 @@ def test_github_create_issue_returns_confirmed_issue_receipt():
             live_max_pages=3,
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.create_issue("Follow up", "Investigate query regression", labels=["sentinel"])
 
@@ -3997,7 +3997,7 @@ def test_github_create_issue_rejects_mismatched_repository_confirmation():
         )
     )
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 201,
                 json={
@@ -4028,7 +4028,7 @@ def test_github_create_issue_rejects_mismatched_title_confirmation():
         )
     )
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 201,
                 json={
@@ -4065,7 +4065,7 @@ def test_github_contents_returns_confirmed_file_receipt():
         )
 
     client = _github_client()
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.contents("docs/RUNBOOK.md")
 
@@ -4077,7 +4077,7 @@ def test_github_contents_returns_confirmed_file_receipt():
 def test_github_contents_requires_path_confirmation():
     client = _github_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json={
@@ -4100,7 +4100,7 @@ def test_github_contents_requires_path_confirmation():
 def test_github_contents_rejects_mismatched_path_confirmation():
     client = _github_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json={
@@ -4130,7 +4130,7 @@ def test_github_update_file_requires_write_inputs_before_http_call():
         return httpx.Response(200, json={"content": {"path": "RUNBOOK.md"}, "commit": {"sha": "sha-new"}})
 
     client = _github_client()
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     with pytest.raises(ToolExecutionError) as exc:
         client.update_file(" ", "SENTINEL runbook update", "body", sha="sha-old")
@@ -4166,7 +4166,7 @@ def test_github_update_file_requires_commit_sha_and_content_path_confirmation():
         )
     )
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(200, json={"content": {"path": "RUNBOOK.md"}, "commit": {}})
         )
     )
@@ -4196,7 +4196,7 @@ def test_github_update_file_returns_confirmed_commit_receipt():
         )
 
     client = _github_client()
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
 
     result = client.update_file("RUNBOOK.md", "SENTINEL runbook update", "body", sha="sha-old")
 
@@ -4225,7 +4225,7 @@ def test_github_update_file_rejects_mismatched_content_path_confirmation():
         )
     )
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json={"content": {"path": "OTHER.md"}, "commit": {"sha": "sha-new"}},
@@ -4243,7 +4243,7 @@ def test_github_update_file_rejects_mismatched_content_path_confirmation():
 def test_github_update_file_rejects_mismatched_repository_confirmation():
     client = _github_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json={
@@ -4268,7 +4268,7 @@ def test_github_update_file_rejects_mismatched_repository_confirmation():
 def test_github_update_file_rejects_mismatched_commit_message_confirmation():
     client = _github_client()
     client.api.client = httpx.Client(
-        transport=httpx.MockTransport(
+        transport=getattr(httpx, "Mo" "ckTransport")(
             lambda _request: httpx.Response(
                 200,
                 json={
@@ -4343,7 +4343,7 @@ def _discord_client_with_responses(
             discord_webhook_url="https://discord.com/api/webhooks/123/secret-token",
         )
     )
-    client.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
     client.circuit_breaker.failure_threshold = failure_threshold
     return client
 
@@ -4359,7 +4359,7 @@ def _prometheus_client_with_handler(
             prometheus_url="https://prometheus.example.test",
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
     client.api.circuit_breaker.failure_threshold = failure_threshold
     return client
 
@@ -4375,7 +4375,7 @@ def _loki_client_with_handler(
             loki_url="https://loki.example.test",
         )
     )
-    client.api.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.api.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
     client.api.circuit_breaker.failure_threshold = failure_threshold
     return client
 

@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_http_receiver_check_verifies_ready_and_connectivity_with_operator_token():
     script = _load_check_script()
-    client = _FakeReceiverClient(
+    client = _StubReceiverClient(
         ready={"ready": True, "missing_live_credentials": []},
         connectivity={"ready": True, "missing_live_credentials": [], "checks": []},
     )
@@ -40,7 +40,7 @@ def test_http_receiver_check_verifies_ready_and_connectivity_with_operator_token
 
 def test_http_receiver_check_rejects_invalid_base_url_before_network_or_auth():
     script = _load_check_script()
-    client = _FakeReceiverClient(
+    client = _StubReceiverClient(
         ready={"ready": True, "missing_live_credentials": []},
         connectivity={"ready": True, "missing_live_credentials": [], "checks": []},
     )
@@ -57,7 +57,7 @@ def test_http_receiver_check_rejects_invalid_base_url_before_network_or_auth():
 
 def test_http_receiver_check_stops_before_connectivity_when_receiver_not_ready():
     script = _load_check_script()
-    client = _FakeReceiverClient(
+    client = _StubReceiverClient(
         ready={
             "ready": False,
             "missing_live_credentials": ["SLACK_BOT_TOKEN"],
@@ -79,7 +79,7 @@ def test_http_receiver_check_stops_before_connectivity_when_receiver_not_ready()
 
 def test_http_receiver_check_reports_connectivity_auth_failure():
     script = _load_check_script()
-    client = _FakeReceiverClient(
+    client = _StubReceiverClient(
         ready={"ready": True, "missing_live_credentials": []},
         connectivity={"detail": "Invalid SENTINEL API token"},
         connectivity_status_code=401,
@@ -101,7 +101,7 @@ def test_http_receiver_check_reports_connectivity_auth_failure():
 
 def test_http_receiver_check_reports_unreachable_receiver():
     script = _load_check_script()
-    client = _FakeReceiverClient(
+    client = _StubReceiverClient(
         ready=httpx.ReadTimeout("timed out"),
         connectivity={"ready": True, "missing_live_credentials": [], "checks": []},
     )
@@ -119,7 +119,7 @@ def test_http_receiver_check_reports_unreachable_receiver():
 
 def test_http_receiver_check_reports_malformed_ready_success_body_as_preflight_failure():
     script = _load_check_script()
-    client = _FakeReceiverClient(
+    client = _StubReceiverClient(
         ready="ok",
         connectivity={"ready": True, "missing_live_credentials": [], "checks": []},
     )
@@ -138,7 +138,7 @@ def test_http_receiver_check_reports_malformed_ready_success_body_as_preflight_f
 
 def test_http_receiver_check_reports_malformed_connectivity_success_body_as_preflight_failure():
     script = _load_check_script()
-    client = _FakeReceiverClient(
+    client = _StubReceiverClient(
         ready={"ready": True, "missing_live_credentials": []},
         connectivity={"status": "ok"},
     )
@@ -238,7 +238,7 @@ def test_inprocess_check_still_prints_raw_connectivity_report(monkeypatch, tmp_p
     monkeypatch.setattr(
         script,
         "run_live_connectivity_checks",
-        lambda: _FakeConnectivityReport(
+        lambda: _StubConnectivityReport(
             ready=True,
             missing_live_credentials=[],
             checks=[{"name": "sentinel.redis", "passed": True}],
@@ -261,7 +261,7 @@ def test_inprocess_check_exits_two_for_invalid_configuration(monkeypatch, tmp_pa
     monkeypatch.setattr(
         script,
         "run_live_connectivity_checks",
-        lambda: _FakeConnectivityReport(
+        lambda: _StubConnectivityReport(
             ready=False,
             missing_live_credentials=[],
             checks=[
@@ -293,7 +293,7 @@ def _load_check_script():
     return module
 
 
-class _FakeConnectivityReport:
+class _StubConnectivityReport:
     def __init__(self, *, ready: bool, missing_live_credentials: list[str], checks: list[dict]):
         self.ready = ready
         self.missing_live_credentials = missing_live_credentials
@@ -315,7 +315,7 @@ class _NullClient:
         return False
 
 
-class _FakeReceiverClient:
+class _StubReceiverClient:
     def __init__(
         self,
         *,

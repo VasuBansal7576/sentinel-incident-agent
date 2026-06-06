@@ -36,7 +36,7 @@ def test_recording_demo_prints_crisp_timeline_without_raw_json(tmp_path):
     assert "🧾 Incident Timeline" in output
     assert "📣 Discord Message Preview" in output
     assert "story-facing tools shown: 8" in output
-    assert "Full run: 35 tool calls, 26 plan steps, status=completed" in output
+    assert "Full run: 37 tool calls, 26 plan steps, status=completed" in output
     assert required_diagnosis in output
     assert "repo.diff_pull_request" in output
     assert "Blame points payment_service/orders.py:84 to @alice" in output

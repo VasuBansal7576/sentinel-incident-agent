@@ -11,7 +11,7 @@ def test_connectivity_report_keeps_infra_checks_but_skips_provider_network_when_
     called = []
     monkeypatch.setattr(
         "sentinel.connectivity.LiveProviderClients.from_settings",
-        lambda _settings: called.append(True) or _FakeClients(),
+        lambda _settings: called.append(True) or _StubClients(),
     )
 
     report = run_live_connectivity_checks(SentinelSettings.from_env(), store=SQLiteInvestigationStore())
@@ -84,7 +84,7 @@ def test_connectivity_report_rejects_provided_unreachable_store_before_network(m
 
     monkeypatch.setattr(
         "sentinel.connectivity.LiveProviderClients.from_settings",
-        lambda _settings: called.append(True) or _FakeClients(),
+        lambda _settings: called.append(True) or _StubClients(),
     )
 
     report = run_live_connectivity_checks(_ready_settings(), store=UnreachableStore())
@@ -115,12 +115,12 @@ def test_connectivity_report_closes_owned_store_when_credentials_missing(monkeyp
         def close(self):
             self.closed = True
 
-    def build_fake_store(database_url):
+    def build_stub_store(database_url):
         store = ClosableStore()
         stores.append(store)
         return store
 
-    monkeypatch.setattr("sentinel.connectivity.build_store", build_fake_store)
+    monkeypatch.setattr("sentinel.connectivity.build_store", build_stub_store)
 
     report = run_live_connectivity_checks(
         replace(
@@ -135,7 +135,7 @@ def test_connectivity_report_closes_owned_store_when_credentials_missing(monkeyp
     assert stores[0].closed is True
 
 
-def test_connectivity_report_runs_all_provider_checks_with_fake_clients(monkeypatch):
+def test_connectivity_report_runs_all_provider_checks_with_stub_clients(monkeypatch):
     _make_redis_reachable(monkeypatch)
     settings = replace(
         SentinelSettings.from_env(),
@@ -154,7 +154,7 @@ def test_connectivity_report_runs_all_provider_checks_with_fake_clients(monkeypa
         redis_url="redis://redis:6379/0",
     )
 
-    clients = _FakeClients()
+    clients = _StubClients()
     monkeypatch.setattr(
         "sentinel.connectivity.LiveProviderClients.from_settings",
         lambda _settings: clients,
@@ -210,7 +210,7 @@ def test_connectivity_report_uses_free_provider_checks_when_configured(monkeypat
         approver_id="eng-oncall",
     )
 
-    clients = _FreeFakeClients()
+    clients = _FreeStubClients()
     monkeypatch.setattr(
         "sentinel.connectivity.LiveProviderClients.from_settings",
         lambda _settings: clients,
@@ -273,13 +273,13 @@ def test_connectivity_report_uses_oauth_store_tokens_for_provider_clients(monkey
     store.save_oauth_token(provider="github", access_token="gh-oauth")
     store.save_oauth_token(provider="slack", access_token="xoxb-oauth")
 
-    def fake_clients_from_settings(resolved):
+    def stub_clients_from_settings(resolved):
         captured.append(resolved)
-        return _FakeClients()
+        return _StubClients()
 
     monkeypatch.setattr(
         "sentinel.connectivity.LiveProviderClients.from_settings",
-        fake_clients_from_settings,
+        stub_clients_from_settings,
     )
 
     report = run_live_connectivity_checks(settings, store=store)
@@ -310,7 +310,7 @@ def test_connectivity_report_rejects_insufficient_stored_datadog_oauth_scopes_be
 
     monkeypatch.setattr(
         "sentinel.connectivity.LiveProviderClients.from_settings",
-        lambda _settings: called.append(True) or _FakeClients(),
+        lambda _settings: called.append(True) or _StubClients(),
     )
 
     report = run_live_connectivity_checks(settings, store=store)
@@ -338,7 +338,7 @@ def test_connectivity_report_rejects_insufficient_stored_slack_and_github_oauth_
 
     monkeypatch.setattr(
         "sentinel.connectivity.LiveProviderClients.from_settings",
-        lambda _settings: called.append(True) or _FakeClients(),
+        lambda _settings: called.append(True) or _StubClients(),
     )
 
     report = run_live_connectivity_checks(settings, store=store)
@@ -371,7 +371,7 @@ def test_connectivity_report_rejects_unreachable_redis_before_provider_network(m
     monkeypatch.setattr("sentinel.connectivity.RedisRateLimitBackend", UnreachableRedis)
     monkeypatch.setattr(
         "sentinel.connectivity.LiveProviderClients.from_settings",
-        lambda _settings: called.append(True) or _FakeClients(),
+        lambda _settings: called.append(True) or _StubClients(),
     )
 
     report = run_live_connectivity_checks(_ready_settings(), store=SQLiteInvestigationStore())
@@ -408,7 +408,7 @@ def test_connectivity_report_returns_structured_datadog_oauth_refresh_failure(mo
     )
     monkeypatch.setattr(
         "sentinel.connectivity.LiveProviderClients.from_settings",
-        lambda _settings: called.append(True) or _FakeClients(),
+        lambda _settings: called.append(True) or _StubClients(),
     )
 
     report = run_live_connectivity_checks(settings, store=store)
@@ -443,7 +443,7 @@ def test_connectivity_report_returns_structured_oauth_store_read_failure(monkeyp
 
     monkeypatch.setattr(
         "sentinel.connectivity.LiveProviderClients.from_settings",
-        lambda _settings: called.append(True) or _FakeClients(),
+        lambda _settings: called.append(True) or _StubClients(),
     )
 
     report = run_live_connectivity_checks(
@@ -486,7 +486,7 @@ def test_connectivity_report_redacts_sensitive_failure_detail(monkeypatch):
         redis_url="redis://redis:6379/0",
     )
 
-    clients = _FakeClients()
+    clients = _StubClients()
     clients.datadog = _LeakyDatadog()
     monkeypatch.setattr(
         "sentinel.connectivity.LiveProviderClients.from_settings",
@@ -507,7 +507,7 @@ def test_connectivity_report_redacts_sensitive_failure_detail(monkeypatch):
 def test_connectivity_report_rejects_malformed_success_payload(monkeypatch):
     _make_redis_reachable(monkeypatch)
     settings = _ready_settings()
-    clients = _FakeClients()
+    clients = _StubClients()
     clients.datadog = _MalformedDatadog()
     monkeypatch.setattr(
         "sentinel.connectivity.LiveProviderClients.from_settings",
@@ -527,7 +527,7 @@ def test_connectivity_report_rejects_malformed_success_payload(monkeypatch):
 def test_connectivity_report_rejects_empty_provider_read(monkeypatch):
     _make_redis_reachable(monkeypatch)
     settings = _ready_settings()
-    clients = _FakeClients()
+    clients = _StubClients()
     clients.datadog = _EmptyDatadogLogs()
     monkeypatch.setattr(
         "sentinel.connectivity.LiveProviderClients.from_settings",
@@ -546,7 +546,7 @@ def test_connectivity_report_rejects_empty_provider_read(monkeypatch):
 def test_connectivity_report_rejects_metric_sample_without_finite_numeric_datapoint(monkeypatch):
     _make_redis_reachable(monkeypatch)
     settings = _ready_settings()
-    clients = _FakeClients()
+    clients = _StubClients()
     clients.datadog = _DatadogMetricsWithoutFiniteDatapoints()
     monkeypatch.setattr(
         "sentinel.connectivity.LiveProviderClients.from_settings",
@@ -565,7 +565,7 @@ def test_connectivity_report_rejects_metric_sample_without_finite_numeric_datapo
 def test_connectivity_report_preserves_typed_provider_error_metadata(monkeypatch):
     _make_redis_reachable(monkeypatch)
     settings = _ready_settings()
-    clients = _FakeClients()
+    clients = _StubClients()
     clients.github = _RateLimitedGitHub()
     monkeypatch.setattr(
         "sentinel.connectivity.LiveProviderClients.from_settings",
@@ -586,7 +586,7 @@ def test_connectivity_report_preserves_typed_provider_error_metadata(monkeypatch
 def test_connectivity_report_rejects_empty_github_pull_request_read(monkeypatch):
     _make_redis_reachable(monkeypatch)
     settings = _ready_settings()
-    clients = _FakeClients()
+    clients = _StubClients()
     clients.github = _EmptyGitHubPullRequests()
     monkeypatch.setattr(
         "sentinel.connectivity.LiveProviderClients.from_settings",
@@ -606,7 +606,7 @@ def test_connectivity_report_rejects_empty_github_pull_request_read(monkeypatch)
 def test_connectivity_report_rejects_missing_kubernetes_rollout_revisions(monkeypatch):
     _make_redis_reachable(monkeypatch)
     settings = _ready_settings()
-    clients = _FakeClients()
+    clients = _StubClients()
     clients.kubernetes = _EmptyKubernetesRolloutRevisions()
     monkeypatch.setattr(
         "sentinel.connectivity.LiveProviderClients.from_settings",
@@ -626,7 +626,7 @@ def test_connectivity_report_rejects_missing_kubernetes_rollout_revisions(monkey
 def test_connectivity_report_rejects_rollout_revisions_without_previous_target(monkeypatch):
     _make_redis_reachable(monkeypatch)
     settings = _ready_settings()
-    clients = _FakeClients()
+    clients = _StubClients()
     clients.kubernetes = _SingleKubernetesRolloutRevision()
     monkeypatch.setattr(
         "sentinel.connectivity.LiveProviderClients.from_settings",
@@ -647,7 +647,7 @@ def test_connectivity_report_rejects_rollout_revisions_without_previous_target(m
 def test_connectivity_report_rejects_slack_auth_without_ok_true(monkeypatch):
     _make_redis_reachable(monkeypatch)
     settings = _ready_settings()
-    clients = _FakeClients()
+    clients = _StubClients()
     clients.slack = _MalformedSlackAuth()
     monkeypatch.setattr(
         "sentinel.connectivity.LiveProviderClients.from_settings",
@@ -667,7 +667,7 @@ def test_connectivity_report_rejects_slack_auth_without_ok_true(monkeypatch):
 def test_connectivity_report_fails_when_slack_default_channel_is_unreachable(monkeypatch):
     _make_redis_reachable(monkeypatch)
     settings = _ready_settings()
-    clients = _FakeClients()
+    clients = _StubClients()
     clients.slack = _MissingSlackDefaultChannel()
     monkeypatch.setattr(
         "sentinel.connectivity.LiveProviderClients.from_settings",
@@ -719,7 +719,7 @@ def _make_redis_reachable(monkeypatch):
     monkeypatch.setattr("sentinel.connectivity.RedisRateLimitBackend", ReachableRedis)
 
 
-class _FakeDatadog:
+class _StubDatadog:
     def search_logs(self, *args, **kwargs):
         return {"events": [{"id": "log"}]}
 
@@ -730,7 +730,7 @@ class _FakeDatadog:
         return {"spans": [{"id": "span"}]}
 
 
-class _FakePrometheus:
+class _StubPrometheus:
     def __init__(self):
         self.queries = []
 
@@ -749,7 +749,7 @@ class _FakePrometheus:
         return {"groups": [{"name": "sentinel-free-tier-demo", "rules": [{"name": "SentinelDemoPaymentErrors"}]}]}
 
 
-class _FakeLoki:
+class _StubLoki:
     def query_range(self, *args, **kwargs):
         return {
             "events": [
@@ -761,24 +761,24 @@ class _FakeLoki:
         }
 
 
-class _LeakyDatadog(_FakeDatadog):
+class _LeakyDatadog(_StubDatadog):
     def search_logs(self, *args, **kwargs):
         raise RuntimeError(
             "Datadog rejected Authorization: Bearer xoxb-secret-token with api_key=dd-secret-key"
         )
 
 
-class _MalformedDatadog(_FakeDatadog):
+class _MalformedDatadog(_StubDatadog):
     def search_logs(self, *args, **kwargs):
         return {"events": {"id": "log"}}
 
 
-class _EmptyDatadogLogs(_FakeDatadog):
+class _EmptyDatadogLogs(_StubDatadog):
     def search_logs(self, *args, **kwargs):
         return {"events": []}
 
 
-class _DatadogMetricsWithoutFiniteDatapoints(_FakeDatadog):
+class _DatadogMetricsWithoutFiniteDatapoints(_StubDatadog):
     def query_metric(self, *args, **kwargs):
         return {
             "series": [
@@ -795,7 +795,7 @@ class _DatadogMetricsWithoutFiniteDatapoints(_FakeDatadog):
         }
 
 
-class _FakeGitHub:
+class _StubGitHub:
     def commits(self, *args, **kwargs):
         return [{"sha": "abc"}]
 
@@ -806,12 +806,12 @@ class _FakeGitHub:
         return [{"id": 1}]
 
 
-class _EmptyGitHubPullRequests(_FakeGitHub):
+class _EmptyGitHubPullRequests(_StubGitHub):
     def pull_requests(self, *args, **kwargs):
         return []
 
 
-class _RateLimitedGitHub(_FakeGitHub):
+class _RateLimitedGitHub(_StubGitHub):
     def commits(self, *args, **kwargs):
         raise ToolExecutionError(
             ToolErrorKind.RATE_LIMITED,
@@ -821,7 +821,7 @@ class _RateLimitedGitHub(_FakeGitHub):
         )
 
 
-class _FakePagerDuty:
+class _StubPagerDuty:
     def list_incidents(self, *args, **kwargs):
         return [{"id": "PD", "status": "triggered"}]
 
@@ -829,7 +829,7 @@ class _FakePagerDuty:
         return [{"user": {"id": "U"}}]
 
 
-class _FakeSlack:
+class _StubSlack:
     def oauth_test(self):
         return {"ok": True}
 
@@ -848,7 +848,7 @@ class _DisabledSlack:
     enabled = False
 
 
-class _FakeDiscord:
+class _StubDiscord:
     def __init__(self):
         self.posts = []
 
@@ -857,7 +857,7 @@ class _FakeDiscord:
         return {"ok": True, "provider": "discord", "content": text}
 
 
-class _FakeGenericAlerts:
+class _StubGenericAlerts:
     def on_call_context(self, incident_id=None):
         return {
             "incident": {"id": incident_id, "source": "generic_webhook"},
@@ -868,12 +868,12 @@ class _FakeGenericAlerts:
         }
 
 
-class _MalformedSlackAuth(_FakeSlack):
+class _MalformedSlackAuth(_StubSlack):
     def oauth_test(self):
         return {"ok": False}
 
 
-class _MissingSlackDefaultChannel(_FakeSlack):
+class _MissingSlackDefaultChannel(_StubSlack):
     def channel_info(self):
         raise ToolExecutionError(
             ToolErrorKind.AUTHORIZATION,
@@ -905,7 +905,7 @@ class _SingleKubernetesRolloutRevision:
         return {"revisions": [41], "current_revision": "revision:41", "previous_revision": None}
 
 
-class _FakeKubernetes:
+class _StubKubernetes:
     def list_pods(self, *args, **kwargs):
         return {"items": [{"metadata": {"name": "checkout-abc"}}]}
 
@@ -920,29 +920,29 @@ class _FakeKubernetes:
         }
 
 
-class _FakeClients:
+class _StubClients:
     def __init__(self):
-        self.datadog = _FakeDatadog()
-        self.github = _FakeGitHub()
-        self.pagerduty = _FakePagerDuty()
-        self.slack = _FakeSlack()
-        self.kubernetes = _FakeKubernetes()
+        self.datadog = _StubDatadog()
+        self.github = _StubGitHub()
+        self.pagerduty = _StubPagerDuty()
+        self.slack = _StubSlack()
+        self.kubernetes = _StubKubernetes()
         self.closed = False
 
     def close(self):
         self.closed = True
 
 
-class _FreeFakeClients:
+class _FreeStubClients:
     def __init__(self):
-        self.prometheus = _FakePrometheus()
-        self.loki = _FakeLoki()
-        self.github = _FakeGitHub()
+        self.prometheus = _StubPrometheus()
+        self.loki = _StubLoki()
+        self.github = _StubGitHub()
         self.pagerduty = _DisabledPagerDuty()
-        self.generic_alerts = _FakeGenericAlerts()
+        self.generic_alerts = _StubGenericAlerts()
         self.slack = _DisabledSlack()
-        self.discord = _FakeDiscord()
-        self.kubernetes = _FakeKubernetes()
+        self.discord = _StubDiscord()
+        self.kubernetes = _StubKubernetes()
         self.closed = False
 
     def close(self):

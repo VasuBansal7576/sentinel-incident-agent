@@ -79,7 +79,7 @@ python3 scripts/audit_free_tier_goal.py \
   --demo-summary .sentinel/free-tier-demo-summary.json
 ```
 
-## Premium Values To Leave Blank
+## Additional Cloud Values To Leave Blank
 
 Leave these unset for the free-provider proof:
 

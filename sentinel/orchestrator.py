@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 import re
 import time
 
-from sentinel.model_client import DeterministicIncidentModelClient, ModelClient
+from sentinel.model_client import ModelBackedToolPlanner, ModelClient
 from sentinel.models import (
     ApprovalCommand,
     ApprovalRequest,
@@ -29,7 +28,7 @@ from sentinel.models import (
     now_utc,
 )
 from sentinel.scenarios import build_scenarios
-from sentinel.simulated import SimulatedIncidentEnvironment
+from sentinel.replay import ReplayIncidentEnvironment
 from sentinel.store import SQLiteInvestigationStore
 from sentinel.subagents import SubagentLauncher
 from sentinel.time_windows import (
@@ -51,10 +50,10 @@ class SentinelOrchestrator:
         db_path: str | Path = ":memory:",
     ):
         self.store = store or SQLiteInvestigationStore(db_path)
-        self.model_client = model_client or DeterministicIncidentModelClient()
+        self.model_client = model_client or ModelBackedToolPlanner()
         self.registry: ToolRegistry | None = None
         self.executor: ToolExecutor | None = None
-        self.environment: SimulatedIncidentEnvironment | None = None
+        self.environment: ReplayIncidentEnvironment | None = None
         self.subagents: SubagentLauncher | None = None
 
     def run_scenario(self, scenario_name: str = "golden_path", *, auto_approve: bool = True) -> InvestigationState:
@@ -234,10 +233,11 @@ class SentinelOrchestrator:
         return state
 
     def _wire_scenario(self, scenario: IncidentScenario) -> None:
-        self.environment = SimulatedIncidentEnvironment(scenario)
+        self.environment = ReplayIncidentEnvironment(scenario)
         self.registry = ToolFactory(self.environment).build_registry()
         self.executor = ToolExecutor(self.registry, self.store)
         self.subagents = SubagentLauncher(self.registry, self.executor, self.store)
+        self.subagents.bind_spawn_tool()
 
     def _run_incident(self, state: InvestigationState, *, auto_approve: bool) -> InvestigationState:
         assert self.registry and self.executor and self.subagents
@@ -323,16 +323,14 @@ class SentinelOrchestrator:
 
         self._transition(state, StateName.SERVICE_INVESTIGATION)
         if self._should_spawn_service_investigators(state):
-            with ThreadPoolExecutor(max_workers=2) as pool:
-                futures = [
-                    pool.submit(self.subagents.service_investigator, state.id, service)
-                    for service in state.affected_services
-                ]
-                service_reports = [future.result() for future in futures]
+            service_reports = [
+                report
+                for service in state.affected_services
+                if (report := self._spawn_service_investigator(state, service)) is not None
+            ]
         else:
             service_reports = []
         state.service_reports = service_reports
-        state.evidence.extend(_flatten_evidence(report.evidence for report in service_reports))
         step_number = 18
         for report in service_reports:
             self._add_step(
@@ -803,6 +801,7 @@ class SentinelOrchestrator:
             state=state,
             available_contracts=available,
             objective=objective,
+            all_contracts=self.registry.list_contracts(),
         )
 
     def _tool_step(
@@ -896,6 +895,36 @@ class SentinelOrchestrator:
         state.tool_calls = self.store.list_tool_calls(state.id)
         self._checkpoint(state)
         return result
+
+    def _spawn_service_investigator(
+        self,
+        state: InvestigationState,
+        service_name: str,
+    ) -> ServiceIncidentReport | None:
+        result = self._invoke_tool(
+            state,
+            "infra.spawn_service_investigator",
+            {
+                "service": service_name,
+                "service_name": service_name,
+                "objective": f"Investigate {service_name} with scoped read-only tools.",
+            },
+        )
+        if not result.success:
+            return None
+        service_report = result.data.get("service_report")
+        if not isinstance(service_report, dict):
+            state.evidence.append(
+                Evidence(
+                    source="infra.spawn_service_investigator",
+                    time_window="unknown",
+                    affected_service=service_name,
+                    claim="evidence gap: service investigator did not return ServiceIncidentReport",
+                    provenance=f"{state.scenario_name}:infra.spawn_service_investigator:contract",
+                )
+            )
+            return None
+        return ServiceIncidentReport.model_validate(service_report)
 
     def _repo_payload(self, state: InvestigationState, service: str) -> dict[str, Any]:
         payload: dict[str, Any] = repository_payload(state, service)

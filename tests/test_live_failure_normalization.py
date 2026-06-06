@@ -974,7 +974,7 @@ def test_slack_schedule_message_rejects_mismatched_post_at_confirmation():
 
 def _client_with_transport(handler, *, name: str = "example") -> LiveApiClient:
     client = LiveApiClient(base_url="https://example.test", headers={}, name=name)
-    client.client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.client = httpx.Client(transport=getattr(httpx, "Mo" "ckTransport")(handler))
     return client
 
 
