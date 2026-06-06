@@ -15,7 +15,7 @@ SENTINEL has two proof paths:
 - **Deterministic path:** proves long-horizon orchestration through a 26-step incident flow with 35 tool calls, scoped subagents, phase-constrained tool access, approval gating, remediation verification, and post-mortem generation.
 - **Live path:** proves real operational integration through Prometheus metrics, Loki logs, a real `/slow-query` latency spike, missing-index diagnosis, human approval, `idx_orders_user_id` creation, verified latency improvement, and a Discord timeline.
 
-The product story is not "rollback only." The product story is: SENTINEL investigates incidents and proposes fixes; in v1, remediation requires human approval. The live proof shows an approved index creation.
+The product story is: SENTINEL investigates incidents and proposes fixes; in v1, remediation requires human approval. The live proof shows an approved index creation.
 
 ## Solution
 
