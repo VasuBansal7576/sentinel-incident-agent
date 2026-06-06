@@ -1,0 +1,24 @@
+[project]
+name = "sentinel-incident-agent"
+version = "0.1.0"
+description = "SENTINEL autonomous DevOps incident investigation agent"
+requires-python = ">=3.13"
+dependencies = [
+  "fastapi",
+  "httpx",
+  "kubernetes",
+  "opentelemetry-api",
+  "psycopg[binary]",
+  "pydantic",
+  "redis",
+  "uvicorn",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+  "live: requires real external API credentials and RUN_LIVE_TESTS=1",
+]

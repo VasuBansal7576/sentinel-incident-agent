@@ -1,0 +1,123 @@
+services:
+  sentinel:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      prometheus:
+        condition: service_started
+      loki:
+        condition: service_started
+    environment:
+      DD_API_KEY: ${DD_API_KEY:-}
+      DD_APP_KEY: ${DD_APP_KEY:-}
+      DATADOG_APP_KEY: ${DATADOG_APP_KEY:-}
+      DD_SITE: ${DD_SITE:-datadoghq.com}
+      DD_OAUTH_TOKEN: ${DD_OAUTH_TOKEN:-}
+      PROMETHEUS_URL: ${PROMETHEUS_URL:-http://prometheus:9090}
+      LOKI_URL: ${LOKI_URL:-http://loki:3100}
+      DD_CLIENT_ID: ${DD_CLIENT_ID:-}
+      DD_CLIENT_SECRET: ${DD_CLIENT_SECRET:-}
+      DD_REDIRECT_URI: ${DD_REDIRECT_URI:-http://localhost:8000/oauth/datadog/callback}
+      DD_OAUTH_REQUIRED_SCOPES: ${DD_OAUTH_REQUIRED_SCOPES:-logs_read_data,metrics_read,apm_read}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GITHUB_OWNER: ${GITHUB_OWNER:-}
+      GITHUB_REPO: ${GITHUB_REPO:-}
+      SENTINEL_GITHUB_WRITE_ENABLED: ${SENTINEL_GITHUB_WRITE_ENABLED:-false}
+      PAGERDUTY_API_KEY: ${PAGERDUTY_API_KEY:-}
+      PAGERDUTY_REQUESTER_EMAIL: ${PAGERDUTY_REQUESTER_EMAIL:-}
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      SLACK_CHANNEL_ID: ${SLACK_CHANNEL_ID:-}
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
+      SLACK_CLIENT_ID: ${SLACK_CLIENT_ID:-}
+      SLACK_CLIENT_SECRET: ${SLACK_CLIENT_SECRET:-}
+      SLACK_REDIRECT_URI: ${SLACK_REDIRECT_URI:-http://localhost:8000/oauth/slack/callback}
+      SLACK_OAUTH_SCOPES: ${SLACK_OAUTH_SCOPES:-chat:write,channels:read,channels:manage,groups:read,groups:write}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GITHUB_REDIRECT_URI: ${GITHUB_REDIRECT_URI:-http://localhost:8000/oauth/github/callback}
+      GITHUB_OAUTH_SCOPES: ${GITHUB_OAUTH_SCOPES:-repo,read:org}
+      SENTINEL_OAUTH_STATE_SECRET: ${SENTINEL_OAUTH_STATE_SECRET:-}
+      SENTINEL_API_TOKEN: ${SENTINEL_API_TOKEN:-}
+      PAGERDUTY_WEBHOOK_SECRET: ${PAGERDUTY_WEBHOOK_SECRET:-}
+      PAGERDUTY_WEBHOOK_PREVIOUS_SECRET: ${PAGERDUTY_WEBHOOK_PREVIOUS_SECRET:-}
+      PAGERDUTY_WEBHOOK_SUBSCRIPTION_ID: ${PAGERDUTY_WEBHOOK_SUBSCRIPTION_ID:-}
+      SENTINEL_DEFAULT_SERVICE: ${SENTINEL_DEFAULT_SERVICE:-payment-service}
+      SENTINEL_SERVICE_ALIASES: ${SENTINEL_SERVICE_ALIASES:-}
+      SENTINEL_APPROVER_ID: ${SENTINEL_APPROVER_ID:-}
+      SENTINEL_ENV: ${SENTINEL_ENV:-production}
+      KUBERNETES_NAMESPACE: ${KUBERNETES_NAMESPACE:-default}
+      SENTINEL_KUBECTL_TIMEOUT_SECONDS: ${SENTINEL_KUBECTL_TIMEOUT_SECONDS:-20}
+      SENTINEL_LIVE_MAX_PAGES: ${SENTINEL_LIVE_MAX_PAGES:-25}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-sentinel}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-sentinel}}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      KUBECONFIG: /root/.kube/config
+    volumes:
+      - ${CONTAINER_KUBECONFIG:-~/.kube/config}:/root/.kube/config:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -H \"Authorization: Bearer $$SENTINEL_API_TOKEN\" http://localhost:8000/ready/live"]
+      interval: 60s
+      timeout: 20s
+      retries: 3
+      start_period: 30s
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sentinel}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: ${POSTGRES_DB:-sentinel}
+    ports:
+      - "5432:5432"
+    volumes:
+      - sentinel-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sentinel} -d ${POSTGRES_DB:-sentinel}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./configs/prometheus.rules.yml:/etc/prometheus/prometheus.rules.yml:ro
+      - sentinel-prometheus:/prometheus
+
+  loki:
+    image: grafana/loki:3.2.1
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    ports:
+      - "3100:3100"
+    volumes:
+      - sentinel-loki:/loki
+
+volumes:
+  sentinel-postgres:
+  sentinel-prometheus:
+  sentinel-loki:

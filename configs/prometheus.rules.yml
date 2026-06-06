@@ -1,0 +1,12 @@
+groups:
+  - name: sentinel-free-tier-demo
+    rules:
+      - alert: SentinelDemoPaymentErrors
+        expr: sum(rate(http_requests_total{service="payment-service",status=~"5.."}[5m])) > 0
+        for: 0m
+        labels:
+          severity: page
+          service: payment-service
+        annotations:
+          summary: SENTINEL demo payment-service error rate is elevated
+          description: Free-tier demo alert used by SENTINEL live connectivity checks.
