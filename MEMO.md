@@ -19,3 +19,5 @@ More time would add a larger incident corpus, hosted-provider validation runs wi
 ## Decision I Defend
 
 I defend triage-gated service investigators. Spawning subagents for every alert is noisy and expensive. SENTINEL first establishes scope, then fans out only when multiple services or unclear blast radius justify it. Each Service Investigator gets isolated context and read-only scoped tools; the parent Investigation reconciles structured reports instead of averaging confidence or picking the loudest local diagnosis. That keeps multi-service investigation useful without surrendering safety or coherence.
+
+I also considered a framework-style agent stack (LangChain/CrewAI) but chose a custom phase controller with deterministic guardrails because frameworks abstract away checkpointing and typed error recovery that production incident response requires.
