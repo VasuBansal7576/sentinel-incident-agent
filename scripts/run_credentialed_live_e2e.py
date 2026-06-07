@@ -436,7 +436,20 @@ def _verification_summary(
 ) -> dict[str, Any]:
     model_plans = status.get("model_tool_plans") if isinstance(status.get("model_tool_plans"), list) else []
     service_reports = status.get("service_reports") if isinstance(status.get("service_reports"), list) else []
+    tool_call_records = status.get("tool_call_records") if isinstance(status.get("tool_call_records"), list) else []
+    state_transitions = status.get("state_transitions") if isinstance(status.get("state_transitions"), list) else []
+    evidence_records = status.get("evidence_records") if isinstance(status.get("evidence_records"), list) else []
     tool_calls = int(status.get("tool_calls") or 0)
+    recorded_tool_names = [
+        str(record.get("tool_name"))
+        for record in tool_call_records
+        if isinstance(record, dict) and record.get("tool_name")
+    ]
+    successful_tool_names = {
+        str(record.get("tool_name"))
+        for record in tool_call_records
+        if isinstance(record, dict) and record.get("tool_name") and record.get("success") is True
+    }
     has_groq_model = any(
         isinstance(plan, dict) and plan.get("source") == "model" and plan.get("provider") == "groq"
         for plan in model_plans
@@ -448,37 +461,92 @@ def _verification_summary(
         and bool(str(plan.get("model_rationale") or "").strip())
         for plan in model_plans
     )
-    has_subagent = bool(service_reports) or any(
+    has_full_tool_call_records = (
+        len(tool_call_records) >= tool_calls >= MIN_TOOL_CALLS
+        and all(
+            isinstance(record, dict)
+            and record.get("tool_name")
+            and record.get("state")
+            and record.get("success") is not None
+            and bool(str(record.get("reasoning_trace") or "").strip())
+            for record in tool_call_records
+        )
+    )
+    transition_states = {
+        str((event.get("payload") or {}).get("state"))
+        for event in state_transitions
+        if isinstance(event, dict) and isinstance(event.get("payload"), dict)
+    }
+    has_state_transition_records = {
+        "received",
+        "triage",
+        "evidence_collection",
+        "response_proposal",
+        "remediation",
+        "post_mortem",
+    }.issubset(transition_states)
+    has_live_evidence_records = any(
+        isinstance(record, dict) and str(record.get("provenance") or "").startswith("live::")
+        for record in evidence_records
+    )
+    has_subagent = "infra.spawn_service_investigator" in recorded_tool_names and (
+        bool(service_reports) or any(
+            isinstance(step, dict) and "subagent" in str(step.get("action", "")).lower()
+            for step in status.get("plan_steps", [])
+            if isinstance(step, dict)
+        )
+    )
+    has_discord_message = bool(status.get("discord_notified")) and bool(
+        str(status.get("last_discord_message") or "").strip()
+    )
+    remediation_tool_executed = bool(
+        {"infra.rollback_deployment", "infra.add_database_index"} & successful_tool_names
+    )
+    remediation = status.get("remediation_result")
+    remediation_executed = (
+        isinstance(remediation, dict)
+        and remediation.get("status") == "executed"
+        and remediation_tool_executed
+    )
+    has_subagent_plan_step = bool(service_reports) or any(
         isinstance(step, dict) and "subagent" in str(step.get("action", "")).lower()
         for step in status.get("plan_steps", [])
         if isinstance(step, dict)
     )
-    remediation = status.get("remediation_result")
     passed = (
         status.get("status") == "completed"
         and approval_submitted
         and checkpoint_recovered
         and checkpoint_backend == "sqlite"
         and tool_calls >= MIN_TOOL_CALLS
+        and has_full_tool_call_records
+        and has_state_transition_records
         and has_groq_model
         and has_model_reasoning
         and has_subagent
-        and bool(status.get("discord_notified"))
-        and isinstance(remediation, dict)
-        and remediation.get("status") == "executed"
+        and has_subagent_plan_step
+        and has_live_evidence_records
+        and has_discord_message
+        and remediation_executed
     )
     return {
         "passed": passed,
         "status": status.get("status"),
         "tool_calls": tool_calls,
+        "tool_call_records": len(tool_call_records),
+        "has_full_tool_call_records": has_full_tool_call_records,
+        "has_state_transition_records": has_state_transition_records,
         "has_groq_model_plan": has_groq_model,
         "has_model_reasoning": has_model_reasoning,
         "has_subagent": has_subagent,
+        "has_live_evidence_records": has_live_evidence_records,
         "checkpoint_backend": checkpoint_backend,
         "checkpoint_recovered": checkpoint_recovered,
         "approval_submitted": approval_submitted,
         "discord_notified": bool(status.get("discord_notified")),
+        "has_discord_message": has_discord_message,
         "remediation_status": remediation.get("status") if isinstance(remediation, dict) else None,
+        "remediation_tool_executed": remediation_tool_executed,
         "model_tool_plans": model_plans,
         "service_reports": service_reports,
         "last_discord_message": status.get("last_discord_message"),
