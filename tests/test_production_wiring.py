@@ -2746,6 +2746,63 @@ def test_approval_endpoint_rejects_failed_provider_preflight_before_resume(monke
     assert captured == []
 
 
+def test_approval_endpoint_allows_data_dependent_loki_trace_gap_before_resume(monkeypatch):
+    _make_production_infra_reachable(monkeypatch)
+    captured = []
+
+    monkeypatch.setattr(
+        "sentinel.webapp.run_live_connectivity_checks",
+        lambda settings, store: ConnectivityReport(
+            ready=False,
+            missing_live_credentials=[],
+            checks=[
+                ConnectivityCheck(
+                    name="loki.logs",
+                    provider="loki",
+                    passed=True,
+                    duration_ms=12.0,
+                    detail="ok",
+                    sample={"events": {"count": 1}},
+                ),
+                ConnectivityCheck(
+                    name="loki.apm_traces",
+                    provider="loki",
+                    passed=False,
+                    duration_ms=12.0,
+                    detail="response field 'events' must contain at least one provider record",
+                ),
+            ],
+        ),
+    )
+
+    def resume_without_live_network(settings, investigation_id, approval_command, store=None):
+        captured.append((investigation_id, approval_command))
+        return store.load_state(investigation_id)
+
+    monkeypatch.setattr("sentinel.webapp._resume_live_investigation_with_approval", resume_without_live_network)
+    settings = _stub_live_settings(
+        environment="production",
+        database_url="postgresql://sentinel:sentinel@db/sentinel",
+        redis_url="redis://redis:6379/0",
+    )
+    app = create_app(settings)
+    state = _waiting_approval_state()
+    app.state.store.save_state(state)
+
+    response = TestClient(app).post(
+        f"/investigations/{state.id}/approval",
+        json={
+            "request_id": state.approval_request.id,
+            "approver_id": "eng-oncall",
+            "decision": "approve",
+        },
+        headers=_api_headers(),
+    )
+
+    assert response.status_code == 200
+    assert captured
+
+
 def test_approval_endpoint_preserves_stored_datadog_oauth_for_live_refresh(monkeypatch):
     captured = []
 

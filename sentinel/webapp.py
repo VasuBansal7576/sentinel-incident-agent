@@ -823,7 +823,7 @@ def _require_runtime_ready(
         return
     if body["ready"] and provider_preflight:
         report = run_live_connectivity_checks(settings, store=store)
-        if report.ready:
+        if report.ready or _provider_preflight_has_only_data_dependent_trace_gap(report):
             return
         raise HTTPException(
             status_code=503,
@@ -840,7 +840,23 @@ def _require_runtime_ready(
             "message": f"SENTINEL is not ready for {operation}",
             **body,
         },
-    )
+        )
+
+
+def _provider_preflight_has_only_data_dependent_trace_gap(report: Any) -> bool:
+    if getattr(report, "missing_live_credentials", []):
+        return False
+    checks = getattr(report, "checks", [])
+    failed = [check for check in checks if not getattr(check, "passed", False)]
+    if not failed:
+        return True
+    for check in failed:
+        if getattr(check, "name", None) != "loki.apm_traces":
+            return False
+        detail = str(getattr(check, "detail", "") or "")
+        if "at least one provider record" not in detail:
+            return False
+    return True
 
 
 def _live_provider_preflight_skipped(settings: SentinelSettings) -> bool:
