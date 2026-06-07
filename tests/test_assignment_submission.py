@@ -15,6 +15,7 @@ def test_public_proof_docs_satisfy_problem_md_requirements():
     public_proof = "\n".join(
         [
             _read("README.md"),
+            _read("architecture.md"),
             _read("MEMO.md"),
             _read("docs/model-driven-proof.md"),
             _read("docs/subagent-proof.md"),
@@ -29,6 +30,9 @@ def test_public_proof_docs_satisfy_problem_md_requirements():
     assert "model_response_parsed" in public_proof
     assert "framework-style agent stack" in public_proof
     assert "deterministic guardrails" in public_proof
+    assert "52 ToolContract registry" in public_proof
+    assert "infra.spawn_service_investigator" in public_proof
+    assert "Reviewer File Map" in public_proof
 
 
 def test_memo_is_one_page_and_answers_required_sections():

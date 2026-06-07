@@ -112,6 +112,7 @@ RUN_FREE_TIER_LIVE_E2E_TESTS=1 SENTINEL_LIVE_RECEIVER_URL=http://localhost:8000 
 ## Reviewer Proof Artifacts
 
 - [MEMO.md](MEMO.md): one-page build memo and defended design decision.
+- [architecture.md](architecture.md): architecture diagram and reviewer file map for the 52-tool registry, planner, subagents, live proof, and production scaffolding.
 - [docs/live-proof.md](docs/live-proof.md): redacted Prometheus, Loki, SQLite, and Discord evidence from the live run.
 - [docs/model-driven-proof.md](docs/model-driven-proof.md): hosted model-backed planner proof using the 52-tool registry.
 - [docs/subagent-proof.md](docs/subagent-proof.md): isolated service-investigator proof with scoped tools and structured reports.
