@@ -11,15 +11,24 @@ def _read(path: str) -> str:
     return (PROJECT_ROOT / path).read_text(encoding="utf-8")
 
 
-def test_video_script_satisfies_problem_md_walkthrough_requirements():
-    script = _read("VIDEO_SCRIPT.md")
+def test_public_proof_docs_satisfy_problem_md_requirements():
+    public_proof = "\n".join(
+        [
+            _read("README.md"),
+            _read("MEMO.md"),
+            _read("docs/model-driven-proof.md"),
+            _read("docs/subagent-proof.md"),
+            _read("docs/live-proof.md"),
+        ]
+    )
 
-    assert "37 tool calls" in script
-    assert "35 tool calls" not in script
-    assert "52-tool registry" in script
-    assert "IsolatedSubagentContext" in script
-    assert "model" in script.lower()
-    assert "diverged" in script.lower() or "divergence" in script.lower()
+    assert "37 tool calls" in public_proof
+    assert "35 tool calls" not in public_proof
+    assert "52-tool registry" in public_proof
+    assert "ServiceIncidentReport" in public_proof
+    assert "model_response_parsed" in public_proof
+    assert "framework-style agent stack" in public_proof
+    assert "deterministic guardrails" in public_proof
 
 
 def test_memo_is_one_page_and_answers_required_sections():
@@ -36,24 +45,23 @@ def test_memo_is_one_page_and_answers_required_sections():
 
 
 def test_submission_trace_strategy_distinguishes_unedited_and_public_safe_artifacts():
-    submission = _read("SUBMISSION.md")
+    readme = _read("README.md")
     gitignore = _read(".gitignore")
 
-    assert "native, unedited Codex JSONL export" in submission
-    assert "codex-traces-redacted.jsonl" in submission
-    assert "not the required unedited trace artifact" in submission
-    assert "submitted outside the public repository" in submission
+    assert "codex-traces-redacted.jsonl" in readme
+    assert "public-safe redacted trace copy" in readme
     assert "codex-traces-native*.jsonl" in gitignore
     assert "codex-traces-unedited*.jsonl" in gitignore
+    assert "codex-traces.jsonl" in gitignore
 
 
 def test_public_submission_artifacts_do_not_contain_live_secret_shapes():
     artifact_paths = [
         "MEMO.md",
         "README.md",
-        "SUBMISSION.md",
-        "VIDEO_SCRIPT.md",
         "docs/live-proof.md",
+        "docs/model-driven-proof.md",
+        "docs/subagent-proof.md",
         "codex-traces-redacted.jsonl",
     ]
     combined = "\n".join(_read(path) for path in artifact_paths if (PROJECT_ROOT / path).exists())

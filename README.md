@@ -109,9 +109,10 @@ RUN_LIVE_TESTS=1 pytest tests/test_live_connectivity.py
 RUN_FREE_TIER_LIVE_E2E_TESTS=1 SENTINEL_LIVE_RECEIVER_URL=http://localhost:8000 pytest tests/test_free_tier_live_e2e.py
 ```
 
-## Submission Artifacts
+## Reviewer Proof Artifacts
 
 - [MEMO.md](MEMO.md): one-page build memo and defended design decision.
 - [docs/live-proof.md](docs/live-proof.md): redacted Prometheus, Loki, SQLite, and Discord evidence from the live run.
-- [VIDEO_SCRIPT.md](VIDEO_SCRIPT.md): 3-minute walkthrough script.
-- [SUBMISSION.md](SUBMISSION.md): checklist for GitHub URL, video location, Codex trace path, and memo confirmation.
+- [docs/model-driven-proof.md](docs/model-driven-proof.md): hosted model-backed planner proof using the 52-tool registry.
+- [docs/subagent-proof.md](docs/subagent-proof.md): isolated service-investigator proof with scoped tools and structured reports.
+- [codex-traces-redacted.jsonl](codex-traces-redacted.jsonl): public-safe redacted trace copy for repository review convenience.
