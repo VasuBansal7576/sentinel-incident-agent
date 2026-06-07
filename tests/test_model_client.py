@@ -28,7 +28,14 @@ class _RecordingResponsesClient:
             "evidence_collection": ["observe.fetch_service_logs"],
         }
         return _ResponsesAPIResult(
-            {"output_text": jsonlib.dumps({"tools": selected_by_state[planner_input["current_state"]]})}
+            {
+                "output_text": jsonlib.dumps(
+                    {
+                        "tools": selected_by_state[planner_input["current_state"]],
+                        "rationale": "Use live telemetry first so the next action is grounded in impact.",
+                    }
+                )
+            }
         )
 
 
@@ -73,6 +80,9 @@ def test_model_backed_planner_uses_full_registry_and_selects_by_incident_state()
     first_request = client.requests[0]
     assert first_request["json"]["model"] == "gpt-5.5"
     assert first_request["headers"]["Authorization"] == "Bearer unit-test-key"
+    system_prompt = first_request["json"]["input"][0]["content"][0]["text"]
+    assert "Return strict JSON with two keys" in system_prompt
+    assert "rationale" in system_prompt
     planner_input = jsonlib.loads(first_request["json"]["input"][1]["content"][0]["text"])
     assert len(planner_input["tool_schemas"]) == 52
     assert "observe.query_metrics_range" in planner_input["eligible_tool_names"]
@@ -109,3 +119,6 @@ def test_model_backed_planner_uses_groq_env_and_records_decision(monkeypatch):
     assert planner.last_decision["source"] == "model"
     assert planner.last_decision["provider"] == "groq"
     assert planner.last_decision["selected_tools"] == ["observe.query_metrics_range"]
+    assert planner.last_decision["model_rationale"] == (
+        "Use live telemetry first so the next action is grounded in impact."
+    )

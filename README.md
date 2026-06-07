@@ -78,9 +78,9 @@ For a video run with real credentials, Groq-backed model selection, real GitHub/
 python3 scripts/run_credentialed_live_e2e.py
 ```
 
-The runner prompts for credentials interactively, writes `.sentinel/live-run-<timestamp>.log`, posts a real generic webhook payload, restarts the receiver at the approval checkpoint, and fails unless the final status shows 20+ tool calls, a Groq model plan, subagent evidence, Discord notification, checkpoint recovery, approval, remediation, and verification.
+The runner prompts for credentials interactively, writes `.sentinel/live-run-<timestamp>.log`, posts a real generic webhook payload, restarts the receiver at the approval checkpoint, and fails unless the final status shows 20+ tool calls, a Groq model plan with rationale, subagent evidence, Discord notification, checkpoint recovery, approval, remediation, and verification.
 
-By default this runner uses a file-backed SQLite checkpoint store at `sqlite:////data/sentinel-live-checkpoint.sqlite3` so the restart proof is visibly a SQLite resume. Use `--checkpoint-backend postgres` only when you want the local Docker PostgreSQL store instead of the exact SQLite checkpoint proof.
+The credential prompt still asks for `DATABASE_URL` with the local Docker PostgreSQL default, because that is the production-shaped database configuration. For the exact video checkpoint proof, the default runner then asks for `SQLITE_CHECKPOINT_DATABASE_URL` and uses that file-backed SQLite store at `sqlite:////data/sentinel-live-checkpoint.sqlite3` so the restart proof is visibly a SQLite resume. Use `--checkpoint-backend postgres` only when you want the local Docker PostgreSQL store instead of the exact SQLite checkpoint proof.
 
 ## Deployment
 

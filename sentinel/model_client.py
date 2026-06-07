@@ -248,10 +248,10 @@ class ModelBackedToolPlanner:
                             "type": "input_text",
                             "text": (
                                 "You are SENTINEL's incident planner. Select the next tool calls "
-                                "from eligible_tool_names only. Return strict JSON with one key: "
-                                "tools, an ordered list of tool names. You may also include a "
-                                "brief rationale string explaining the operational reason for "
-                                "the selected tools. Do not invent tools."
+                                "from eligible_tool_names only. Return strict JSON with two keys: "
+                                "tools, an ordered list of tool names, and rationale, a brief "
+                                "string explaining the operational reason for the selected tools. "
+                                "Do not invent tools."
                             ),
                         }
                     ],

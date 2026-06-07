@@ -20,6 +20,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BASE_URL = "http://localhost:8000"
 GROQ_RESPONSES_ENDPOINT = "https://api.groq.com/openai/v1/responses"
 DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
+LOCAL_POSTGRES_DATABASE_URL = "postgresql://sentinel:change-me@postgres:5432/sentinel"
+SQLITE_CHECKPOINT_DATABASE_URL = "sqlite:////data/sentinel-live-checkpoint.sqlite3"
 MIN_TOOL_CALLS = 20
 
 
@@ -55,7 +57,7 @@ def main() -> None:
     log_path = Path(args.log_path) if args.log_path else sentinel_dir / f"live-run-{run_id}.log"
     env_file = sentinel_dir / f"live-run-{run_id}.env"
 
-    env = _collect_credentials(args.checkpoint_backend)
+    env, credential_meta = _collect_credentials(args.checkpoint_backend)
     env["SENTINEL_MODEL_ENDPOINT"] = GROQ_RESPONSES_ENDPOINT
     env.setdefault("SENTINEL_MODEL", DEFAULT_GROQ_MODEL)
     env.setdefault("SENTINEL_ENV", "production")
@@ -65,7 +67,13 @@ def main() -> None:
     _write_env_file(env_file, env)
     with _LiveLog(log_path) as log:
         log.section("credential_prompts_complete")
-        log.json({"env_file": str(env_file), "redacted_env": _redacted_env_summary(env)})
+        log.json(
+            {
+                "env_file": str(env_file),
+                "redacted_env": _redacted_env_summary(env),
+                "credential_prompt_meta": credential_meta,
+            }
+        )
         if not args.skip_compose:
             _run_compose(["up", "-d", "--build", "postgres", "redis", "prometheus", "loki", "sentinel"], env_file, args, log)
         _wait_receiver_ready(args.base_url, env["SENTINEL_API_TOKEN"], args.poll_seconds, log)
@@ -177,7 +185,7 @@ def main() -> None:
     print(f"Live run log: {log_path}")
 
 
-def _collect_credentials(checkpoint_backend: str) -> dict[str, str]:
+def _collect_credentials(checkpoint_backend: str) -> tuple[dict[str, str], dict[str, Any]]:
     print("SENTINEL real live E2E credential prompts")
     print("Secrets are not echoed. Press Enter on optional prompts to leave them unset.")
     env: dict[str, str] = {}
@@ -188,16 +196,29 @@ def _collect_credentials(checkpoint_backend: str) -> dict[str, str]:
     env["DISCORD_WEBHOOK_URL"] = _prompt_secret("DISCORD_WEBHOOK_URL", required=True)
     generated_token = secrets.token_urlsafe(32)
     env["SENTINEL_API_TOKEN"] = _prompt_secret("SENTINEL_API_TOKEN", required=True, default=generated_token)
-    default_database_url = (
-        "sqlite:////data/sentinel-live-checkpoint.sqlite3"
-        if checkpoint_backend == "sqlite"
-        else "postgresql://sentinel:change-me@postgres:5432/sentinel"
-    )
-    env["DATABASE_URL"] = _prompt_text(
+    prompted_database_url = _prompt_text(
         "DATABASE_URL",
         required=True,
-        default=os.getenv("DATABASE_URL") or default_database_url,
+        default=os.getenv("DATABASE_URL") or LOCAL_POSTGRES_DATABASE_URL,
     )
+    credential_meta: dict[str, Any] = {
+        "database_url_prompted": True,
+        "database_url_default": LOCAL_POSTGRES_DATABASE_URL,
+        "checkpoint_backend": checkpoint_backend,
+    }
+    if checkpoint_backend == "sqlite":
+        sqlite_checkpoint_url = _prompt_text(
+            "SQLITE_CHECKPOINT_DATABASE_URL",
+            required=True,
+            default=os.getenv("SQLITE_CHECKPOINT_DATABASE_URL") or SQLITE_CHECKPOINT_DATABASE_URL,
+        )
+        env["DATABASE_URL"] = sqlite_checkpoint_url
+        credential_meta["effective_database_url_prompt"] = "SQLITE_CHECKPOINT_DATABASE_URL"
+        credential_meta["database_url_prompt_value_used_for_receiver"] = False
+    else:
+        env["DATABASE_URL"] = prompted_database_url
+        credential_meta["effective_database_url_prompt"] = "DATABASE_URL"
+        credential_meta["database_url_prompt_value_used_for_receiver"] = True
     env["REDIS_URL"] = _prompt_text(
         "REDIS_URL",
         required=True,
@@ -242,7 +263,7 @@ def _collect_credentials(checkpoint_backend: str) -> dict[str, str]:
         value = _prompt_secret(name, required=False, default=os.getenv(name))
         if value:
             env[name] = value
-    return env
+    return env, credential_meta
 
 
 def _prompt_text(name: str, *, required: bool, default: str | None = None) -> str:
@@ -420,6 +441,13 @@ def _verification_summary(
         isinstance(plan, dict) and plan.get("source") == "model" and plan.get("provider") == "groq"
         for plan in model_plans
     )
+    has_model_reasoning = any(
+        isinstance(plan, dict)
+        and plan.get("source") == "model"
+        and plan.get("provider") == "groq"
+        and bool(str(plan.get("model_rationale") or "").strip())
+        for plan in model_plans
+    )
     has_subagent = bool(service_reports) or any(
         isinstance(step, dict) and "subagent" in str(step.get("action", "")).lower()
         for step in status.get("plan_steps", [])
@@ -433,6 +461,7 @@ def _verification_summary(
         and checkpoint_backend == "sqlite"
         and tool_calls >= MIN_TOOL_CALLS
         and has_groq_model
+        and has_model_reasoning
         and has_subagent
         and bool(status.get("discord_notified"))
         and isinstance(remediation, dict)
@@ -443,6 +472,7 @@ def _verification_summary(
         "status": status.get("status"),
         "tool_calls": tool_calls,
         "has_groq_model_plan": has_groq_model,
+        "has_model_reasoning": has_model_reasoning,
         "has_subagent": has_subagent,
         "checkpoint_backend": checkpoint_backend,
         "checkpoint_recovered": checkpoint_recovered,
