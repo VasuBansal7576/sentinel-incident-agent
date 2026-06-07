@@ -86,16 +86,3 @@ flowchart TD
 | One-page memo | [MEMO.md](MEMO.md). |
 | Video walkthrough | Use this file plus `.submission/VIDEO_SCRIPT.md` as the screen order. |
 | Native unedited traces | The public repo has [codex-traces-redacted.jsonl](codex-traces-redacted.jsonl) for convenience; the native unedited Codex JSONL is submitted separately as the email attachment. |
-
-## Video Path
-
-For the video, use this order:
-
-1. Open this file and show the diagram.
-2. Open [README.md](README.md) and explain the product idea.
-3. Run `python3 scripts/run_sentinel_demo.py --summary-output .sentinel/recording-demo-summary.json` and point to `37 tool calls`, `26 plan steps`, and `completed`.
-4. Open [sentinel/tools.py](sentinel/tools.py) and show the 52-tool registry.
-5. Open [sentinel/model_client.py](sentinel/model_client.py) and [docs/model-driven-proof.md](docs/model-driven-proof.md) for model-driven selection.
-6. Open [sentinel/subagents.py](sentinel/subagents.py) and [docs/subagent-proof.md](docs/subagent-proof.md) for isolated subagents.
-7. Open [docs/live-proof.md](docs/live-proof.md) for Prometheus/Loki/SQLite/Discord proof.
-8. Open [MEMO.md](MEMO.md) for the defended design decision: custom phase controller over a framework-style agent stack.
