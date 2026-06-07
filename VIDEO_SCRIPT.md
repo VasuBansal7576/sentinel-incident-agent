@@ -1,4 +1,4 @@
-# SENTINEL 3-Minute Video Script
+# SENTINEL 4-Minute Video Script
 
 ## 0:00-0:30 - The Problem
 
@@ -10,7 +10,7 @@ Show:
 - The four namespaces in `sentinel/tools.py`: `observe`, `repo`, `infra`, `comms`.
 - The state machine in `sentinel/models.py`.
 
-## 0:30-1:30 - Deterministic Demo
+## 0:30-1:25 - Deterministic Demo
 
 "First I will run the deterministic proof. This is the long-horizon path: 26 state-machine steps and 37 tool calls in one session."
 
@@ -35,7 +35,28 @@ Line to say clearly:
 
 "This is not a chain of hand-coded if-statements. The state machine constrains what is safe; the model chooses evidence gathering within those guardrails."
 
-## 1:30-2:30 - Live Proof
+## 1:25-2:00 - Model-Driven And Subagent Proof
+
+"The deterministic run is reproducible, but the planner boundary is model-backed. In `docs/model-driven-proof.md`, I ran `ModelBackedToolPlanner` against Groq's OpenAI-compatible Responses endpoint with `llama-3.3-70b-versatile`. The planner sent all 52 tool schemas and the 28 triage-eligible tool names. The hosted model selected `observe.fetch_service_logs`, `observe.get_distributed_traces`, and `observe.check_pod_health`, and the app returned that same eligible list without deterministic fallback."
+
+Show:
+
+- `docs/model-driven-proof.md` lines with `proof_status model_response_parsed`.
+- `registry_tools_sent 52`.
+- `eligible_tools_sent 28`.
+- `planner_returned_tools observe.fetch_service_logs,observe.get_distributed_traces,observe.check_pod_health`.
+- `model_reasoning`.
+
+"For subagents, `infra.spawn_service_investigator` creates an isolated service-investigator context. The child receives only observe and repo tools, and attempts to use infra or comms tools are denied. It returns typed `ServiceIncidentReport` objects that the parent reconciles."
+
+Show:
+
+- `docs/subagent-proof.md` `service_report_context_id`.
+- Denied `infra.rollback_deployment`.
+- Denied `comms.post_to_slack`.
+- Parent reconciliation consuming `ServiceIncidentReport`.
+
+## 2:00-2:55 - Live Proof
 
 "Now the live proof. This run deploys SENTINEL, Prometheus, and Loki into kind. The app exposes `/slow-query`, which performs a real SQLite query without an index. A load thread pushes latency high enough for Prometheus to alert. SENTINEL receives the real alert payload through `/webhooks/generic`, reads real Prometheus metrics and real Loki logs, diagnoses the missing `orders.user_id` index, asks for approval, creates `idx_orders_user_id`, verifies the metric improvement, and posts the timeline to Discord."
 
@@ -62,9 +83,9 @@ Show:
 - The Discord message in the browser or from the summary output.
 - The line in the timeline that says Prometheus before fix and after fix.
 
-## 2:30-3:15 - Divergence And Code Walkthrough
+## 2:55-3:45 - Divergence And Code Walkthrough
 
-"One place where I diverged from the model was the submission claim around enterprise providers. The model pushed toward saying every provider path was live-proven. I cut that claim. The proof path here is real Prometheus, Loki, kind, SQLite, and Discord. Datadog, PagerDuty, Slack, GitHub OAuth, and broader Kubernetes paths are implemented as additional cloud integrations unless a reviewer runs them with their own credentials."
+"One place I diverged from the model was orchestration. I considered a framework-style agent stack, like LangChain or CrewAI, but chose a custom phase controller with deterministic guardrails because frameworks abstract away checkpointing and typed error recovery that production incident response requires."
 
 "The most substantive code is the boundary between autonomous investigation and deterministic safety."
 
@@ -80,6 +101,16 @@ Point out:
 - In `subagents.py`, each Service Investigator receives an `IsolatedSubagentContext`, a scoped tool set, and returns a typed report to the parent.
 - In `tools.py`, `build_tool_contracts()` creates the 52-tool registry and `ToolExecutor.invoke()` denies tools outside the scoped registry or current phase.
 - In `model_client.py`, the production planner calls the model with tool schemas and current state, while tests can inject deterministic clients for reproducible evaluation.
+
+## 3:45-4:00 - Submission Close
+
+"The required properties are all represented here: 52 tools across four namespaces with model-driven selection, real isolated subagents, a 37-call long-horizon session, production scaffolding through retries/rate limits/typed errors/tests/deployment shape, and composable tool outputs feeding diagnosis, approval, remediation, verification, and the postmortem."
+
+Show:
+
+- `SUBMISSION_CHECKLIST.md`.
+- `pytest -q` output if available.
+- `docker compose config -q` output if available.
 
 Closing line:
 

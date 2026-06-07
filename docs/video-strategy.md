@@ -1,6 +1,6 @@
 # Video Strategy
 
-Target length: 3:30
+Target length: 4:00
 
 Lead with the deterministic path for the 20+ tool-call requirement. Then use the live path as integration proof.
 
@@ -40,7 +40,7 @@ This is the long-horizon proof. SENTINEL executes 26 plan steps and 37 recorded 
 Then show `docs/model-driven-proof.md`:
 
 ```text
-The deterministic run is reproducible. The planner boundary is model-backed: with a key, SENTINEL sends all 52 tool schemas and the current phase's eligible tools to the model. The hosted gpt-5.5 selection frame picked `observe.query_metrics_range` for triage, and the planner-path proof shows the same selection flow without using deterministic fallback.
+The deterministic run is reproducible. The planner boundary is model-backed: with a key, SENTINEL sends all 52 tool schemas and the current phase's eligible tools to a hosted model. In the direct Groq-backed proof, `llama-3.3-70b-versatile` selected `observe.fetch_service_logs`, `observe.get_distributed_traces`, and `observe.check_pod_health` from 28 triage-eligible tools, and the app planner returned that same list without deterministic fallback.
 ```
 
 ## 1:45-2:45 - Live Proof
@@ -60,7 +60,7 @@ Show:
 - Loki sequential-scan log.
 - Discord timeline.
 
-## 2:45-3:15 - Code Walkthrough
+## 2:45-3:25 - Code Walkthrough
 
 Open:
 
@@ -82,7 +82,21 @@ Show `docs/subagent-proof.md`:
 - Denied `infra.rollback_deployment` and `comms.post_to_slack`.
 - Parent reconciliation consuming two reports.
 
-## 3:15-3:30 - Divergence Moment
+## 3:25-3:45 - Production Scaffolding
+
+Show:
+
+- `pytest -q` output.
+- `docker compose config -q` output.
+- `sentinel/live_clients.py` or `sentinel/rate_limiters.py` for retries, rate limits, and typed provider failures.
+
+Say:
+
+```text
+This is structured for deployment rather than as a notebook. The build has typed provider errors, retryable failure classification, rate limits, audit hashes, an evaluation harness, unit and integration tests, and Docker Compose deployment shape.
+```
+
+## 3:45-4:00 - Divergence Moment
 
 Say:
 
