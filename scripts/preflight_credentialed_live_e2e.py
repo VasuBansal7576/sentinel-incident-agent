@@ -127,6 +127,7 @@ def run_preflight(
         "status": "ready" if not errors else "not_ready",
         "compose_project": compose_project,
         "project_root": str(root),
+        "cleanup_commands": _cleanup_commands(checks),
         "errors": errors,
         "warnings": warnings,
         "checks": checks,
@@ -226,6 +227,15 @@ def _docker_port_owner_checks(root: Path, compose_project: str) -> list[dict[str
                 f"{owner.get('Names', '<unknown>')}({_compose_project_label(owner)})"
                 for owner in other_projects
             )
+            cleanup_projects = set()
+            for owner in other_projects:
+                project = _compose_project_label(owner)
+                if project:
+                    cleanup_projects.add(project)
+            cleanup_commands = [
+                f"docker compose -p {project} down"
+                for project in sorted(cleanup_projects)
+            ]
             checks.append(
                 {
                     "name": f"docker.port_owner.{port}",
@@ -237,6 +247,7 @@ def _docker_port_owner_checks(root: Path, compose_project: str) -> list[dict[str
                         "docker compose -p sentinet down"
                     ),
                     "owners": owner_labels,
+                    "cleanup_commands": cleanup_commands,
                 }
             )
         elif owners:
@@ -260,9 +271,22 @@ def _docker_port_owner_checks(root: Path, compose_project: str) -> list[dict[str
                         f"localhost:{port} for {service} is already in use by a non-Docker "
                         "or unknown process. Stop that listener before recording."
                     ),
+                    "cleanup_commands": [f"lsof -nP -iTCP:{port} -sTCP:LISTEN"],
                 }
             )
     return checks
+
+
+def _cleanup_commands(checks: list[dict[str, Any]]) -> list[str]:
+    commands: list[str] = []
+    for check in checks:
+        values = check.get("cleanup_commands")
+        if not isinstance(values, list):
+            continue
+        for value in values:
+            if isinstance(value, str) and value and value not in commands:
+                commands.append(value)
+    return commands
 
 
 def _parse_docker_ps_json_lines(stdout: str) -> list[dict[str, Any]]:
@@ -340,6 +364,9 @@ def _human_summary(summary: dict[str, Any]) -> str:
     for check in summary["checks"]:
         mark = "PASS" if check["passed"] else check["severity"].upper()
         lines.append(f"- {mark}: {check['name']} - {check['detail']}")
+    if summary["cleanup_commands"]:
+        lines.append("Suggested cleanup commands:")
+        lines.extend(f"- {command}" for command in summary["cleanup_commands"])
     return "\n".join(lines)
 
 

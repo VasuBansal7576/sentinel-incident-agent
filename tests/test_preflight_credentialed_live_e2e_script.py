@@ -68,6 +68,7 @@ def test_preflight_fails_when_required_port_is_owned_by_non_docker_process(monke
 
     assert summary["passed"] is False
     assert any(check["name"] == "port.8000" for check in summary["errors"])
+    assert summary["cleanup_commands"] == ["lsof -nP -iTCP:8000 -sTCP:LISTEN"]
 
 
 def test_preflight_fails_when_required_port_is_owned_by_other_compose_project(monkeypatch, tmp_path):
@@ -82,6 +83,7 @@ def test_preflight_fails_when_required_port_is_owned_by_other_compose_project(mo
     assert summary["passed"] is False
     assert any(check["name"] == "docker.port_owner.8000" for check in summary["errors"])
     assert "sentinet" in summary["errors"][0]["detail"]
+    assert summary["cleanup_commands"] == ["docker compose -p sentinet down"]
 
 
 def test_preflight_allows_required_port_owned_by_target_compose_project(monkeypatch, tmp_path):
@@ -98,6 +100,7 @@ def test_preflight_allows_required_port_owned_by_target_compose_project(monkeypa
         check["name"] == "docker.port_owner.8000" and check["passed"]
         for check in summary["checks"]
     )
+    assert summary["cleanup_commands"] == []
 
 
 def test_preflight_can_skip_compose_checks(monkeypatch, tmp_path):
