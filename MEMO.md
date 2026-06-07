@@ -4,7 +4,7 @@
 
 SENTINEL is a self-hosted incident investigation agent. It receives an alert, creates a durable Investigation, moves through an 8-state incident flow, exposes a typed 52-tool registry across `observe`, `repo`, `infra`, and `comms`, lets the model choose safe phase-eligible tools, records evidence and audit hashes, proposes remediation, requires structured human approval, executes only the approved action, verifies the result, and drafts a post-mortem.
 
-The deterministic proof run covers the long-horizon path: 26 plan steps, 37 recorded tool calls, scoped service investigators, approval snapshots, rollback, verification, and post-mortem output. The latest credentialed live proof uses Groq, GitHub, Prometheus, Loki, SQLite, a generic webhook, and Discord to run 34 real tool calls, trigger a real `/slow-query` alert, diagnose the missing `orders.user_id` index, recover from a checkpoint restart, receive approval, create `idx_orders_user_id`, verify latency improved from `115.2ms` to `1.2ms`, and post the timeline to Discord.
+The deterministic proof run covers the long-horizon path: 26 plan steps, 37 recorded tool calls, scoped service investigators, approval snapshots, rollback, verification, and post-mortem output. The committed credentialed live proof uses Groq, GitHub, Prometheus, Loki, SQLite, a generic webhook, and Discord to run 34 real tool calls, trigger a real `/slow-query` alert, diagnose the missing `orders.user_id` index, recover from a checkpoint restart, receive approval, create `idx_orders_user_id`, verify latency improved from `115.2ms` to `1.2ms`, and post the timeline to Discord.
 
 ## What I Cut
 
