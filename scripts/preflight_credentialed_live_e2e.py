@@ -401,8 +401,11 @@ def _port_free(port: int) -> bool:
 
 def _host_port_free(host: str, port: int, family: socket.AddressFamily) -> bool:
     with socket.socket(family, socket.SOCK_STREAM) as sock:
-        sock.settimeout(0.2)
-        return sock.connect_ex((host, port)) != 0
+        try:
+            sock.bind((host, port))
+        except OSError:
+            return False
+        return True
 
 
 def _check(
