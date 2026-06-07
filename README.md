@@ -75,6 +75,7 @@ The last successful live proof showed:
 For a video run with real credentials, Groq-backed model selection, real GitHub/Discord/API calls, checkpoint restart, structured approval, and a full log:
 
 ```bash
+python3 scripts/preflight_credentialed_live_e2e.py
 python3 scripts/run_credentialed_live_e2e.py
 ```
 

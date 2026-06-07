@@ -37,6 +37,7 @@ def main() -> None:
     parser.add_argument("--payload-file", help="JSON webhook payload to POST to /webhooks/generic.")
     parser.add_argument("--poll-seconds", type=int, default=420)
     parser.add_argument("--poll-interval", type=float, default=5.0)
+    parser.add_argument("--skip-preflight", action="store_true", help="Skip non-secret local Docker/config checks.")
     parser.add_argument("--skip-compose", action="store_true", help="Use an already running receiver.")
     parser.add_argument("--compose-project", default="sentinel-live")
     parser.add_argument("--log-path", default=None)
@@ -57,15 +58,16 @@ def main() -> None:
     log_path = Path(args.log_path) if args.log_path else sentinel_dir / f"live-run-{run_id}.log"
     env_file = sentinel_dir / f"live-run-{run_id}.env"
 
-    env, credential_meta = _collect_credentials(args.checkpoint_backend)
-    env["SENTINEL_MODEL_ENDPOINT"] = GROQ_RESPONSES_ENDPOINT
-    env.setdefault("SENTINEL_MODEL", DEFAULT_GROQ_MODEL)
-    env.setdefault("SENTINEL_ENV", "production")
-    env.setdefault("SENTINEL_GITHUB_WRITE_ENABLED", "false")
-    env.setdefault("SENTINEL_SERVICE_ALIASES", "{}")
-
-    _write_env_file(env_file, env)
     with _LiveLog(log_path) as log:
+        _run_non_secret_preflight(args, log)
+        env, credential_meta = _collect_credentials(args.checkpoint_backend)
+        env["SENTINEL_MODEL_ENDPOINT"] = GROQ_RESPONSES_ENDPOINT
+        env.setdefault("SENTINEL_MODEL", DEFAULT_GROQ_MODEL)
+        env.setdefault("SENTINEL_ENV", "production")
+        env.setdefault("SENTINEL_GITHUB_WRITE_ENABLED", "false")
+        env.setdefault("SENTINEL_SERVICE_ALIASES", "{}")
+
+        _write_env_file(env_file, env)
         log.section("credential_prompts_complete")
         log.json(
             {
@@ -199,6 +201,26 @@ def main() -> None:
                 raise SystemExit(1)
 
     print(f"Live run log: {log_path}")
+
+
+def _run_non_secret_preflight(args: argparse.Namespace, log: "_LiveLog") -> None:
+    if args.skip_preflight:
+        log.section("local_preflight")
+        log.json({"status": "skipped", "reason": "--skip-preflight"})
+        return
+    if str(PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT))
+    from scripts.preflight_credentialed_live_e2e import run_preflight
+
+    summary = run_preflight(
+        project_root=PROJECT_ROOT,
+        compose_project=args.compose_project,
+        check_compose=not args.skip_compose,
+    )
+    log.section("local_preflight")
+    log.json(summary)
+    if not summary["passed"]:
+        raise SystemExit("Local preflight failed before credential prompts; fix errors or pass --skip-preflight.")
 
 
 def _collect_credentials(checkpoint_backend: str) -> tuple[dict[str, str], dict[str, Any]]:
