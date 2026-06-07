@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import hmac
 import json
+import os
 import time
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import uuid4
 
@@ -43,6 +45,7 @@ from sentinel.tools import ToolExecutor
 
 
 _MANAGED_STORE_ATTR = "_sentinel_managed_store"
+_PROCESS_STARTED_AT = datetime.now(UTC)
 _PROCESS_START_MONOTONIC = time.monotonic()
 
 
@@ -562,6 +565,7 @@ def _readiness_body(settings: SentinelSettings, store: Any) -> dict[str, Any]:
     )
     body = {
         "ready": is_ready,
+        "receiver_process": _receiver_process_identity(),
         "missing_live_credentials": missing,
         "token_sources": credential_status["token_sources"],
         "oauth_store_reachable": credential_status["oauth_store_reachable"],
@@ -964,6 +968,7 @@ def _investigation_response(state: InvestigationState) -> dict[str, Any]:
         for call in state.tool_calls
     )
     return {
+        "receiver_process": _receiver_process_identity(),
         "investigation_id": state.id,
         "incident_id": state.incident_id,
         "status": state.status.value,
@@ -1019,6 +1024,14 @@ def _investigation_response(state: InvestigationState) -> dict[str, Any]:
         "failed_tool_calls": _failed_tool_call_summary(state),
         "audit": _audit_summary(state),
         "context_summary": state.context_summary,
+    }
+
+
+def _receiver_process_identity() -> dict[str, Any]:
+    return {
+        "pid": os.getpid(),
+        "started_at": _PROCESS_STARTED_AT.isoformat(),
+        "uptime_seconds": round(time.monotonic() - _PROCESS_START_MONOTONIC, 3),
     }
 
 

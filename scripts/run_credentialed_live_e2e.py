@@ -106,13 +106,15 @@ def main() -> None:
                 raise SystemExit(1)
 
             before_restart_calls = int(latest.get("tool_calls") or 0)
+            before_restart_process = _receiver_process(latest)
             log.section("checkpoint_restart")
             log.json(
                 {
-                    "message": "Stopping the receiver after approval checkpoint, then restarting and polling the same investigation.",
+                    "message": "Hard-killing the receiver after approval checkpoint, then restarting and polling the same investigation.",
                     "investigation_id": investigation_id,
                     "status_before_restart": latest.get("status"),
                     "tool_calls_before_restart": before_restart_calls,
+                    "receiver_process_before_restart": before_restart_process,
                     "checkpoint_backend": args.checkpoint_backend,
                     "store_note": (
                         "This proves durable checkpoint resume at the approval boundary "
@@ -121,18 +123,31 @@ def main() -> None:
                 }
             )
             if args.skip_compose:
-                input("Stop and restart the receiver process now, then press Enter to continue polling the same investigation...")
+                input("Kill and restart the receiver process now, then press Enter to continue polling the same investigation...")
             else:
-                _run_compose(["stop", "sentinel"], env_file, args, log)
+                _run_compose(["kill", "-s", "SIGKILL", "sentinel"], env_file, args, log)
                 _run_compose(["up", "-d", "sentinel"], env_file, args, log)
             _wait_receiver_ready(args.base_url, env["SENTINEL_API_TOKEN"], args.poll_seconds, log)
             after_restart = _get_status(client, args.base_url, investigation_id, operator_headers)
+            after_restart_process = _receiver_process(after_restart)
+            checkpoint_process_restarted = _receiver_process_changed(
+                before_restart_process,
+                after_restart_process,
+            )
             log.section("checkpoint_recovered_status")
-            log.json(after_restart)
+            log.json(
+                {
+                    "receiver_process_before_restart": before_restart_process,
+                    "receiver_process_after_restart": after_restart_process,
+                    "checkpoint_process_restarted": checkpoint_process_restarted,
+                    "status": after_restart,
+                }
+            )
             checkpoint_recovered = (
                 after_restart.get("investigation_id") == investigation_id
                 and after_restart.get("status") == "waiting_for_approval"
                 and int(after_restart.get("tool_calls") or 0) >= before_restart_calls
+                and checkpoint_process_restarted
             )
             if not checkpoint_recovered:
                 _finalize_failure(log, after_restart, checkpoint_recovered=False)
@@ -174,6 +189,7 @@ def main() -> None:
             summary = _verification_summary(
                 completed,
                 checkpoint_recovered=checkpoint_recovered,
+                checkpoint_process_restarted=checkpoint_process_restarted,
                 approval_submitted=approval_submitted,
                 checkpoint_backend=args.checkpoint_backend,
             )
@@ -431,6 +447,7 @@ def _verification_summary(
     status: dict[str, Any],
     *,
     checkpoint_recovered: bool,
+    checkpoint_process_restarted: bool,
     approval_submitted: bool,
     checkpoint_backend: str,
 ) -> dict[str, Any]:
@@ -517,6 +534,7 @@ def _verification_summary(
         status.get("status") == "completed"
         and approval_submitted
         and checkpoint_recovered
+        and checkpoint_process_restarted
         and checkpoint_backend == "sqlite"
         and tool_calls >= MIN_TOOL_CALLS
         and has_full_tool_call_records
@@ -542,6 +560,7 @@ def _verification_summary(
         "has_live_evidence_records": has_live_evidence_records,
         "checkpoint_backend": checkpoint_backend,
         "checkpoint_recovered": checkpoint_recovered,
+        "checkpoint_process_restarted": checkpoint_process_restarted,
         "approval_submitted": approval_submitted,
         "discord_notified": bool(status.get("discord_notified")),
         "has_discord_message": has_discord_message,
@@ -559,6 +578,7 @@ def _finalize_failure(log: "_LiveLog", status: dict[str, Any], *, checkpoint_rec
         _verification_summary(
             status,
             checkpoint_recovered=checkpoint_recovered,
+            checkpoint_process_restarted=False,
             approval_submitted=False,
             checkpoint_backend="unknown",
         )
@@ -607,6 +627,21 @@ def _response_body(response: httpx.Response) -> Any:
         return response.json()
     except ValueError:
         return response.text
+
+
+def _receiver_process(status: dict[str, Any]) -> dict[str, Any]:
+    process = status.get("receiver_process")
+    return process if isinstance(process, dict) else {}
+
+
+def _receiver_process_changed(before: dict[str, Any], after: dict[str, Any]) -> bool:
+    before_started = before.get("started_at")
+    after_started = after.get("started_at")
+    if isinstance(before_started, str) and isinstance(after_started, str):
+        return bool(before_started and after_started and before_started != after_started)
+    before_pid = before.get("pid")
+    after_pid = after.get("pid")
+    return before_pid is not None and after_pid is not None and before_pid != after_pid
 
 
 def _payload_incident_id(payload: dict[str, Any]) -> str | None:

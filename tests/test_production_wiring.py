@@ -169,6 +169,8 @@ def test_operator_endpoint_requires_bearer_token_in_production():
     assert missing.status_code == 401
     assert wrong.status_code == 401
     assert valid.status_code == 200
+    assert valid.json()["receiver_process"]["started_at"]
+    assert valid.json()["receiver_process"]["uptime_seconds"] >= 0
 
 
 def test_operator_endpoint_allows_development_without_configured_token():

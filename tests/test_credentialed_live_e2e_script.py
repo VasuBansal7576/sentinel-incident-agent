@@ -14,6 +14,7 @@ def test_credentialed_live_verifier_requires_twenty_tools_groq_reasoning_and_sql
     summary = live_e2e._verification_summary(
         _completed_status(tool_calls=20),
         checkpoint_recovered=True,
+        checkpoint_process_restarted=True,
         approval_submitted=True,
         checkpoint_backend="sqlite",
     )
@@ -30,12 +31,14 @@ def test_credentialed_live_verifier_requires_twenty_tools_groq_reasoning_and_sql
     assert summary["has_discord_message"] is True
     assert summary["remediation_tool_executed"] is True
     assert summary["checkpoint_backend"] == "sqlite"
+    assert summary["checkpoint_process_restarted"] is True
 
 
 def test_credentialed_live_verifier_rejects_thirteen_tool_trace():
     summary = live_e2e._verification_summary(
         _completed_status(tool_calls=13),
         checkpoint_recovered=True,
+        checkpoint_process_restarted=True,
         approval_submitted=True,
         checkpoint_backend="sqlite",
     )
@@ -48,6 +51,7 @@ def test_credentialed_live_verifier_rejects_model_plan_without_reasoning():
     summary = live_e2e._verification_summary(
         _completed_status(tool_calls=20, rationale=""),
         checkpoint_recovered=True,
+        checkpoint_process_restarted=True,
         approval_submitted=True,
         checkpoint_backend="sqlite",
     )
@@ -64,6 +68,7 @@ def test_credentialed_live_verifier_rejects_summary_without_detailed_records():
     summary = live_e2e._verification_summary(
         status,
         checkpoint_recovered=True,
+        checkpoint_process_restarted=True,
         approval_submitted=True,
         checkpoint_backend="sqlite",
     )
@@ -81,6 +86,7 @@ def test_credentialed_live_verifier_rejects_missing_subagent_spawn_tool():
     summary = live_e2e._verification_summary(
         status,
         checkpoint_recovered=True,
+        checkpoint_process_restarted=True,
         approval_submitted=True,
         checkpoint_backend="sqlite",
     )
@@ -89,10 +95,24 @@ def test_credentialed_live_verifier_rejects_missing_subagent_spawn_tool():
     assert summary["has_subagent"] is False
 
 
+def test_credentialed_live_verifier_rejects_checkpoint_without_process_restart():
+    summary = live_e2e._verification_summary(
+        _completed_status(tool_calls=20),
+        checkpoint_recovered=True,
+        checkpoint_process_restarted=False,
+        approval_submitted=True,
+        checkpoint_backend="sqlite",
+    )
+
+    assert summary["passed"] is False
+    assert summary["checkpoint_process_restarted"] is False
+
+
 def test_credentialed_live_verifier_rejects_non_sqlite_checkpoint_for_video_proof():
     summary = live_e2e._verification_summary(
         _completed_status(tool_calls=20),
         checkpoint_recovered=True,
+        checkpoint_process_restarted=True,
         approval_submitted=True,
         checkpoint_backend="postgres",
     )
@@ -107,6 +127,18 @@ def test_credentialed_live_runner_keeps_postgres_database_prompt_and_sqlite_chec
         == "postgresql://sentinel:change-me@postgres:5432/sentinel"
     )
     assert live_e2e.SQLITE_CHECKPOINT_DATABASE_URL == "sqlite:////data/sentinel-live-checkpoint.sqlite3"
+
+
+def test_credentialed_live_runner_detects_receiver_process_identity_change():
+    assert live_e2e._receiver_process_changed(
+        {"started_at": "2026-06-07T07:00:00Z", "pid": 1},
+        {"started_at": "2026-06-07T07:01:00Z", "pid": 1},
+    )
+    assert live_e2e._receiver_process_changed({"pid": 101}, {"pid": 202})
+    assert not live_e2e._receiver_process_changed(
+        {"started_at": "2026-06-07T07:00:00Z", "pid": 1},
+        {"started_at": "2026-06-07T07:00:00Z", "pid": 1},
+    )
 
 
 def _completed_status(*, tool_calls: int, rationale: str = "Groq selected metrics, logs, and repo tools.") -> dict:
