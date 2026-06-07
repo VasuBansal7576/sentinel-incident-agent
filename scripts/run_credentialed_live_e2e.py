@@ -23,6 +23,16 @@ DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
 LOCAL_POSTGRES_DATABASE_URL = "postgresql://sentinel:change-me@postgres:5432/sentinel"
 SQLITE_CHECKPOINT_DATABASE_URL = "sqlite:////data/sentinel-live-checkpoint.sqlite3"
 MIN_TOOL_CALLS = 20
+REQUIRED_LIVE_PROVIDERS = ("prometheus", "loki", "github", "generic_webhook", "discord", "sqlite")
+REQUIRED_LIVE_TOOL_PROOFS = (
+    "observe.fetch_service_logs",
+    "observe.query_metrics_range",
+    "observe.check_db_slow_queries",
+    "repo.get_recent_commits",
+    "comms.page_oncall_engineer",
+    "comms.post_to_slack",
+    "infra.add_database_index",
+)
 
 
 def main() -> None:
@@ -666,6 +676,8 @@ def _verification_summary(
     tool_call_records = status.get("tool_call_records") if isinstance(status.get("tool_call_records"), list) else []
     state_transitions = status.get("state_transitions") if isinstance(status.get("state_transitions"), list) else []
     evidence_records = status.get("evidence_records") if isinstance(status.get("evidence_records"), list) else []
+    live_provider_proofs = status.get("live_provider_proofs") if isinstance(status.get("live_provider_proofs"), dict) else {}
+    live_tool_proofs = status.get("live_tool_proofs") if isinstance(status.get("live_tool_proofs"), dict) else {}
     tool_calls = int(status.get("tool_calls") or 0)
     recorded_tool_names = [
         str(record.get("tool_name"))
@@ -735,6 +747,16 @@ def _verification_summary(
         and remediation.get("status") == "executed"
         and remediation_tool_executed
     )
+    required_provider_proofs = {
+        provider: int(live_provider_proofs.get(provider) or 0)
+        for provider in REQUIRED_LIVE_PROVIDERS
+    }
+    has_required_provider_proofs = all(count > 0 for count in required_provider_proofs.values())
+    required_tool_proofs = {
+        tool_name: int(live_tool_proofs.get(tool_name) or 0)
+        for tool_name in REQUIRED_LIVE_TOOL_PROOFS
+    }
+    has_required_tool_proofs = all(count > 0 for count in required_tool_proofs.values())
     has_subagent_plan_step = bool(service_reports) or any(
         isinstance(step, dict) and "subagent" in str(step.get("action", "")).lower()
         for step in status.get("plan_steps", [])
@@ -754,6 +776,8 @@ def _verification_summary(
         and has_subagent
         and has_subagent_plan_step
         and has_live_evidence_records
+        and has_required_provider_proofs
+        and has_required_tool_proofs
         and has_discord_message
         and remediation_executed
     )
@@ -768,6 +792,10 @@ def _verification_summary(
         "has_model_reasoning": has_model_reasoning,
         "has_subagent": has_subagent,
         "has_live_evidence_records": has_live_evidence_records,
+        "required_live_provider_proofs": required_provider_proofs,
+        "has_required_live_provider_proofs": has_required_provider_proofs,
+        "required_live_tool_proofs": required_tool_proofs,
+        "has_required_live_tool_proofs": has_required_tool_proofs,
         "checkpoint_backend": checkpoint_backend,
         "checkpoint_recovered": checkpoint_recovered,
         "checkpoint_process_restarted": checkpoint_process_restarted,

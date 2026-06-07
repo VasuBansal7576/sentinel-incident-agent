@@ -52,6 +52,7 @@ def verify_log(path: Path) -> dict[str, Any]:
     final_status = _last_status(entries)
     logged_summary = _last_payload(entries, "verification_summary") or {}
     webhook_payload = _last_payload(entries, "posting_real_generic_webhook") or {}
+    workload_log = _last_payload(entries, "slow_query_workload_proof") or {}
 
     checkpoint_status = checkpoint_status_payload.get("status")
     if not isinstance(checkpoint_status, dict):
@@ -78,6 +79,7 @@ def verify_log(path: Path) -> dict[str, Any]:
         "incident_id": webhook_payload.get("incident_id"),
         "affected_services": _affected_services(webhook_payload.get("payload")),
         "workload_proof": _workload_proof(webhook_payload.get("payload")),
+        "workload_log": _workload_log_check(workload_log),
     }
     generated_slow_query_payload = _payload_source(webhook_payload.get("payload")) == "prometheus_manual_generic_webhook"
     logged_summary_passed = logged_summary.get("passed") is True
@@ -86,6 +88,7 @@ def verify_log(path: Path) -> dict[str, Any]:
         and webhook_check["posted"]
         and len(webhook_check["affected_services"]) >= 2
         and (not generated_slow_query_payload or webhook_check["workload_proof"]["passed"])
+        and (not generated_slow_query_payload or webhook_check["workload_log"]["passed"])
         and checkpoint_recovered
         and approval_ok
         and reconstructed["passed"]
@@ -107,6 +110,10 @@ def verify_log(path: Path) -> dict[str, Any]:
         "has_model_reasoning": reconstructed["has_model_reasoning"],
         "has_subagent": reconstructed["has_subagent"],
         "has_live_evidence_records": reconstructed["has_live_evidence_records"],
+        "required_live_provider_proofs": reconstructed["required_live_provider_proofs"],
+        "has_required_live_provider_proofs": reconstructed["has_required_live_provider_proofs"],
+        "required_live_tool_proofs": reconstructed["required_live_tool_proofs"],
+        "has_required_live_tool_proofs": reconstructed["has_required_live_tool_proofs"],
         "discord_notified": reconstructed["discord_notified"],
         "has_discord_message": reconstructed["has_discord_message"],
         "remediation_status": reconstructed["remediation_status"],
@@ -239,6 +246,29 @@ def _workload_proof(payload: Any) -> dict[str, Any]:
         "errors": errors,
         "prometheus_value_seconds": sample,
         "prometheus_alert_found": proof.get("prometheus_alert_found"),
+    }
+
+
+def _workload_log_check(payload: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(payload, dict) or not payload:
+        return {"passed": False, "reason": "missing slow_query_workload_proof section"}
+    requests = payload.get("requests")
+    errors = payload.get("errors")
+    sample_payload = payload.get("prometheus_sample")
+    sample = sample_payload.get("value_seconds") if isinstance(sample_payload, dict) else None
+    passed = (
+        isinstance(requests, int)
+        and requests > 0
+        and isinstance(errors, int)
+        and errors >= 0
+        and isinstance(sample, (int, float))
+        and sample > 0
+    )
+    return {
+        "passed": passed,
+        "requests": requests,
+        "errors": errors,
+        "prometheus_value_seconds": sample,
     }
 
 

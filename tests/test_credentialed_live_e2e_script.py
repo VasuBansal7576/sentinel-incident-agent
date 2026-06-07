@@ -121,6 +121,23 @@ def test_credentialed_live_verifier_rejects_non_sqlite_checkpoint_for_video_proo
     assert summary["checkpoint_backend"] == "postgres"
 
 
+def test_credentialed_live_verifier_rejects_missing_github_provider_proof():
+    status = _completed_status(tool_calls=20)
+    status["live_provider_proofs"]["github"] = 0
+
+    summary = live_e2e._verification_summary(
+        status,
+        checkpoint_recovered=True,
+        checkpoint_process_restarted=True,
+        approval_submitted=True,
+        checkpoint_backend="sqlite",
+    )
+
+    assert summary["passed"] is False
+    assert summary["has_required_live_provider_proofs"] is False
+    assert summary["required_live_provider_proofs"]["github"] == 0
+
+
 def test_credentialed_live_runner_keeps_postgres_database_prompt_and_sqlite_checkpoint_default():
     assert (
         live_e2e.LOCAL_POSTGRES_DATABASE_URL
@@ -206,6 +223,23 @@ def _completed_status(*, tool_calls: int, rationale: str = "Groq selected metric
                 "claim": "real provider evidence",
             }
         ],
+        "live_provider_proofs": {
+            "prometheus": 8,
+            "loki": 3,
+            "github": 2,
+            "generic_webhook": 1,
+            "discord": 3,
+            "sqlite": 1,
+        },
+        "live_tool_proofs": {
+            "observe.fetch_service_logs": 1,
+            "observe.query_metrics_range": 2,
+            "observe.check_db_slow_queries": 1,
+            "repo.get_recent_commits": 2,
+            "comms.page_oncall_engineer": 1,
+            "comms.post_to_slack": 2,
+            "infra.add_database_index": 1,
+        },
         "service_reports": [{"service": "checkout-service", "summary": "subagent report"}],
         "plan_steps": [{"action": "Spawn checkout-service Service Investigator"}],
         "discord_notified": True,

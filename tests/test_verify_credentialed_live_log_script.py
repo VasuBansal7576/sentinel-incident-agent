@@ -61,6 +61,22 @@ def test_verify_credentialed_live_log_rejects_generated_payload_without_workload
     assert summary["webhook"]["workload_proof"]["passed"] is False
 
 
+def test_verify_credentialed_live_log_rejects_missing_workload_log_for_generated_payload(tmp_path):
+    log_path = tmp_path / "live-run.log"
+    log_path.write_text(
+        _live_log_text(
+            generated_payload=True,
+            include_workload_proof=True,
+            include_workload_log=False,
+        )
+    )
+
+    summary = verify.verify_log(log_path)
+
+    assert summary["passed"] is False
+    assert summary["webhook"]["workload_log"]["passed"] is False
+
+
 def _live_log_text(
     *,
     checkpoint_process_restarted: bool = True,
@@ -69,6 +85,7 @@ def _live_log_text(
     affected_services: list[str] | None = None,
     generated_payload: bool = False,
     include_workload_proof: bool = True,
+    include_workload_log: bool = True,
 ) -> str:
     before_process = before_process or {"pid": 10, "started_at": "2026-06-07T07:00:00+00:00"}
     after_process = after_process or {"pid": 20, "started_at": "2026-06-07T07:01:00+00:00"}
@@ -143,6 +160,18 @@ def _live_log_text(
         ("status_completed", completed),
         ("verification_summary", {"passed": True}),
     ]
+    if generated_payload and include_workload_log:
+        sections.insert(
+            3,
+            (
+                "slow_query_workload_proof",
+                {
+                    "requests": 12,
+                    "errors": 0,
+                    "prometheus_sample": {"value_seconds": 0.132},
+                },
+            ),
+        )
     return "".join(_section(name, payload) for name, payload in sections)
 
 
@@ -203,6 +232,23 @@ def _completed_status(*, affected_services: list[str]) -> dict:
                 "claim": "real provider evidence",
             }
         ],
+        "live_provider_proofs": {
+            "prometheus": 8,
+            "loki": 3,
+            "github": 2,
+            "generic_webhook": 1,
+            "discord": 3,
+            "sqlite": 1,
+        },
+        "live_tool_proofs": {
+            "observe.fetch_service_logs": 1,
+            "observe.query_metrics_range": 2,
+            "observe.check_db_slow_queries": 1,
+            "repo.get_recent_commits": 2,
+            "comms.page_oncall_engineer": 1,
+            "comms.post_to_slack": 2,
+            "infra.add_database_index": 1,
+        },
         "service_reports": [
             {
                 "service_name": service,
