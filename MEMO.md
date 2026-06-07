@@ -14,7 +14,7 @@ I also cut unrestricted autonomy. SENTINEL can investigate and recommend, but pr
 
 ## More Time
 
-More time would add a larger incident corpus, hosted-provider validation runs with reviewer credentials, durable worker queues, Slack interactive approvals, incident-system writeback, cost telemetry, and repeated live runs across more incident types than the missing-index path.
+More time would turn SENTINEL into a team-ready product: multi-tenant onboarding, managed secrets and OAuth, hosted Datadog/PagerDuty/Slack/Kubernetes validation, durable worker queues, incident-system writeback, cost and latency telemetry, RBAC/audit review, and a GBrain-style team memory layer that turns prior incidents, runbooks, service ownership, deploy history, and decisions into searchable, permissioned context so each investigation starts with accumulated team knowledge without storing raw logs as memory.
 
 ## Decision I Defend
 
