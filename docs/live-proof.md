@@ -1,6 +1,8 @@
 # Live Proof
 
-Source artifact: `.sentinel/real-slow-query-summary.json`
+Tracked source artifact: [real-slow-query-summary.json](real-slow-query-summary.json)
+
+Generated local artifact: `.sentinel/real-slow-query-summary.json`
 
 Run date: 2026-06-07
 
