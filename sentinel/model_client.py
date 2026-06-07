@@ -103,13 +103,14 @@ class ModelBackedToolPlanner:
         api_key: str | None = None,
         http_client: httpx.Client | None = None,
         deterministic_client: DeterministicIncidentModelClient | None = None,
-        endpoint: str = "https://api.openai.com/v1/responses",
+        endpoint: str | None = None,
     ):
         self.model = model or os.getenv("SENTINEL_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-5.5"
-        self.api_key = api_key if api_key is not None else os.getenv("OPENAI_API_KEY")
+        self.api_key = api_key if api_key is not None else os.getenv("OPENAI_API_KEY") or os.getenv("GROQ_API_KEY")
         self.http_client = http_client or httpx.Client(timeout=30.0)
         self.deterministic_client = deterministic_client or DeterministicIncidentModelClient()
-        self.endpoint = endpoint
+        self.endpoint = endpoint or os.getenv("SENTINEL_MODEL_ENDPOINT") or _default_endpoint(self.api_key)
+        self.last_decision: dict[str, Any] = {}
 
     def plan_tools(
         self,
@@ -120,12 +121,21 @@ class ModelBackedToolPlanner:
         all_contracts: list[ToolContract] | None = None,
     ) -> list[str]:
         if not self.api_key:
-            return self._deterministic_plan(
+            planned = self._deterministic_plan(
                 state=state,
                 available_contracts=available_contracts,
                 objective=objective,
                 all_contracts=all_contracts,
             )
+            self.last_decision = self._decision_trace(
+                state=state,
+                objective=objective,
+                available_contracts=available_contracts,
+                selected_tools=planned,
+                source="deterministic_fallback",
+                fallback_reason="missing_api_key",
+            )
+            return planned
 
         available_names = {contract.name for contract in available_contracts}
         try:
@@ -143,24 +153,53 @@ class ModelBackedToolPlanner:
                 ),
             )
             response.raise_for_status()
-            selected = _extract_tool_names(response.json())
-        except Exception:
-            return self._deterministic_plan(
+            response_payload = response.json()
+            raw_text = _response_text(response_payload)
+            selected = _extract_tool_names(response_payload)
+        except Exception as exc:
+            planned = self._deterministic_plan(
                 state=state,
                 available_contracts=available_contracts,
                 objective=objective,
                 all_contracts=all_contracts,
             )
+            self.last_decision = self._decision_trace(
+                state=state,
+                objective=objective,
+                available_contracts=available_contracts,
+                selected_tools=planned,
+                source="deterministic_fallback",
+                fallback_reason=type(exc).__name__,
+            )
+            return planned
 
         planned = [name for name in selected if name in available_names]
         if planned:
+            self.last_decision = self._decision_trace(
+                state=state,
+                objective=objective,
+                available_contracts=available_contracts,
+                selected_tools=planned,
+                source="model",
+                raw_response_text=raw_text,
+            )
             return planned
-        return self._deterministic_plan(
+        planned = self._deterministic_plan(
             state=state,
             available_contracts=available_contracts,
             objective=objective,
             all_contracts=all_contracts,
         )
+        self.last_decision = self._decision_trace(
+            state=state,
+            objective=objective,
+            available_contracts=available_contracts,
+            selected_tools=planned,
+            source="deterministic_fallback",
+            fallback_reason="model_returned_no_eligible_tools",
+            raw_response_text=raw_text,
+        )
+        return planned
 
     def _deterministic_plan(
         self,
@@ -210,7 +249,9 @@ class ModelBackedToolPlanner:
                             "text": (
                                 "You are SENTINEL's incident planner. Select the next tool calls "
                                 "from eligible_tool_names only. Return strict JSON with one key: "
-                                "tools, an ordered list of tool names. Do not invent tools."
+                                "tools, an ordered list of tool names. You may also include a "
+                                "brief rationale string explaining the operational reason for "
+                                "the selected tools. Do not invent tools."
                             ),
                         }
                     ],
@@ -222,6 +263,61 @@ class ModelBackedToolPlanner:
             ],
             "text": {"format": {"type": "json_object"}},
         }
+
+    def _decision_trace(
+        self,
+        *,
+        state: InvestigationState,
+        objective: str,
+        available_contracts: list[ToolContract],
+        selected_tools: list[str],
+        source: str,
+        fallback_reason: str | None = None,
+        raw_response_text: str | None = None,
+    ) -> dict[str, Any]:
+        trace = {
+            "source": source,
+            "provider": _provider_from_endpoint(self.endpoint),
+            "model": self.model,
+            "endpoint": self.endpoint,
+            "current_state": state.current_state.value,
+            "objective": objective,
+            "eligible_tool_count": len(available_contracts),
+            "selected_tools": selected_tools,
+        }
+        if fallback_reason:
+            trace["fallback_reason"] = fallback_reason
+        if raw_response_text:
+            trace["model_raw_text"] = raw_response_text[:2000]
+            rationale = _extract_rationale(raw_response_text)
+            if rationale:
+                trace["model_rationale"] = rationale
+        return trace
+
+
+def _default_endpoint(api_key: str | None) -> str:
+    if api_key and os.getenv("GROQ_API_KEY") == api_key and not os.getenv("OPENAI_API_KEY"):
+        return "https://api.groq.com/openai/v1/responses"
+    return "https://api.openai.com/v1/responses"
+
+
+def _provider_from_endpoint(endpoint: str) -> str:
+    if "groq.com" in endpoint.lower():
+        return "groq"
+    if "openai.com" in endpoint.lower():
+        return "openai"
+    return "custom"
+
+
+def _extract_rationale(raw_text: str) -> str | None:
+    try:
+        parsed = json.loads(raw_text)
+    except json.JSONDecodeError:
+        return None
+    rationale = parsed.get("rationale")
+    if isinstance(rationale, str) and rationale.strip():
+        return rationale.strip()[:1000]
+    return None
 
 
 def _tool_schema(contract: ToolContract) -> dict[str, Any]:

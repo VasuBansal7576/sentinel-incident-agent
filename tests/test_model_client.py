@@ -77,3 +77,35 @@ def test_model_backed_planner_uses_full_registry_and_selects_by_incident_state()
     assert len(planner_input["tool_schemas"]) == 52
     assert "observe.query_metrics_range" in planner_input["eligible_tool_names"]
     assert "infra.rollback_deployment" not in planner_input["eligible_tool_names"]
+
+
+def test_model_backed_planner_uses_groq_env_and_records_decision(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("GROQ_API_KEY", "groq-unit-test-key")
+    monkeypatch.setenv("SENTINEL_MODEL", "llama-3.3-70b-versatile")
+    contracts = build_tool_contracts()
+    client = _RecordingResponsesClient()
+    planner = ModelBackedToolPlanner(http_client=client)
+    state = InvestigationState(
+        incident_id="PD-GROQ",
+        scenario_name="unit",
+        current_state=StateName.TRIAGE,
+        affected_services=["payment-service"],
+    )
+
+    plan = planner.plan_tools(
+        state=state,
+        available_contracts=[
+            contract for contract in contracts if StateName.TRIAGE in contract.phase_allowlist
+        ],
+        all_contracts=contracts,
+        objective="Establish impact",
+    )
+
+    assert plan == ["observe.query_metrics_range"]
+    assert client.requests[0]["url"] == "https://api.groq.com/openai/v1/responses"
+    assert client.requests[0]["headers"]["Authorization"] == "Bearer groq-unit-test-key"
+    assert client.requests[0]["json"]["model"] == "llama-3.3-70b-versatile"
+    assert planner.last_decision["source"] == "model"
+    assert planner.last_decision["provider"] == "groq"
+    assert planner.last_decision["selected_tools"] == ["observe.query_metrics_range"]

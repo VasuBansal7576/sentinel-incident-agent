@@ -860,12 +860,35 @@ class SentinelOrchestrator:
             for contract in self.registry.list_contracts()
             if state.current_state in contract.phase_allowlist
         ]
-        return self.model_client.plan_tools(
+        planned = self.model_client.plan_tools(
             state=state,
             available_contracts=available,
             objective=objective,
             all_contracts=self.registry.list_contracts(),
         )
+        decision = getattr(self.model_client, "last_decision", None)
+        if isinstance(decision, dict) and decision:
+            trace = {
+                key: value
+                for key, value in decision.items()
+                if key
+                in {
+                    "source",
+                    "provider",
+                    "model",
+                    "endpoint",
+                    "current_state",
+                    "objective",
+                    "eligible_tool_count",
+                    "selected_tools",
+                    "fallback_reason",
+                    "model_raw_text",
+                    "model_rationale",
+                }
+            }
+            state.artifacts.setdefault("model_tool_plans", []).append(trace)
+            self._audit(state, "model_tool_plan", trace)
+        return planned
 
     def _tool_step(
         self,

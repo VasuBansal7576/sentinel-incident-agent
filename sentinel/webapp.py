@@ -970,6 +970,22 @@ def _investigation_response(state: InvestigationState) -> dict[str, Any]:
         "current_state": state.current_state.value,
         "tool_calls": len(state.tool_calls),
         "tool_call_names": [call.tool_name for call in state.tool_calls],
+        "tool_call_records": [call.model_dump(mode="json") for call in state.tool_calls],
+        "state_transitions": [
+            event.model_dump(mode="json")
+            for event in state.audit_events
+            if event.event_type == "state_transition"
+        ],
+        "plan_steps": [step.model_dump(mode="json") for step in state.plan_steps],
+        "model_tool_plans": state.artifacts.get("model_tool_plans", []),
+        "evidence_records": [
+            {
+                **evidence.model_dump(mode="json"),
+                "claim": redact_sensitive_text(evidence.claim, max_length=1000),
+            }
+            for evidence in state.evidence
+        ],
+        "service_reports": [report.model_dump(mode="json") for report in state.service_reports],
         "live_provider_proofs": provider_proofs,
         "live_tool_proofs": tool_proofs,
         "slack_notified": slack_notified,

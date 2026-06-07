@@ -70,6 +70,16 @@ The last successful live proof showed:
 - Approved remediation: `CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id)`.
 - Discord timeline: alert received, evidence read, approval received, index created, fix verified.
 
+## Run A Credentialed Real E2E
+
+For a video run with real credentials, Groq-backed model selection, real GitHub/Discord/API calls, checkpoint restart, structured approval, and a full log:
+
+```bash
+python3 scripts/run_credentialed_live_e2e.py
+```
+
+The runner prompts for credentials interactively, writes `.sentinel/live-run-<timestamp>.log`, posts a real generic webhook payload, restarts the receiver at the approval checkpoint, and fails unless the final status shows 20+ tool calls, a Groq model plan, subagent evidence, Discord notification, checkpoint recovery, approval, remediation, and verification.
+
 ## Deployment
 
 For the local production-shaped stack:
