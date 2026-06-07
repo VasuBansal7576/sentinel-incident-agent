@@ -150,7 +150,13 @@ def test_credentialed_live_runner_reads_optional_integrations_from_env_without_p
     monkeypatch.setenv("DD_API_KEY", "dd-api-key")
     prompted_secrets: list[str] = []
 
-    def fake_prompt_secret(name: str, *, required: bool, default: str | None = None) -> str:
+    def fake_prompt_secret(
+        name: str,
+        *,
+        required: bool,
+        default: str | None = None,
+        accept_default: bool = False,
+    ) -> str:
         prompted_secrets.append(name)
         if name == "GROQ_API_KEY":
             return "groq-key"
@@ -162,7 +168,13 @@ def test_credentialed_live_runner_reads_optional_integrations_from_env_without_p
             return default or "sentinel-token"
         raise AssertionError(f"unexpected secret prompt: {name}")
 
-    def fake_prompt_text(name: str, *, required: bool, default: str | None = None) -> str:
+    def fake_prompt_text(
+        name: str,
+        *,
+        required: bool,
+        default: str | None = None,
+        accept_default: bool = False,
+    ) -> str:
         return default or {
             "GITHUB_OWNER": "owner",
             "GITHUB_REPO": "repo",
@@ -193,6 +205,32 @@ def test_credentialed_live_runner_reads_optional_integrations_from_env_without_p
     ]
     assert meta["optional_integrations_prompted"] is False
     assert meta["optional_integrations_present"] == ["DD_API_KEY"]
+
+
+def test_credentialed_live_runner_accepts_env_defaults_without_prompt(monkeypatch):
+    for name, value in {
+        "GROQ_API_KEY": "groq-key",
+        "GITHUB_TOKEN": "github-token",
+        "GITHUB_OWNER": "owner",
+        "GITHUB_REPO": "repo",
+        "DISCORD_WEBHOOK_URL": "discord-webhook",
+    }.items():
+        monkeypatch.setenv(name, value)
+
+    def fail_prompt(*args, **kwargs):
+        raise AssertionError("accept_defaults should not prompt when env/defaults are available")
+
+    monkeypatch.setattr(live_e2e, "input", fail_prompt, raising=False)
+    monkeypatch.setattr(live_e2e.getpass, "getpass", fail_prompt)
+
+    env, meta = live_e2e._collect_credentials("sqlite", accept_defaults=True)
+
+    assert env["GROQ_API_KEY"] == "groq-key"
+    assert env["GITHUB_OWNER"] == "owner"
+    assert env["GITHUB_REPO"] == "repo"
+    assert env["DISCORD_WEBHOOK_URL"] == "discord-webhook"
+    assert env["DATABASE_URL"] == live_e2e.SQLITE_CHECKPOINT_DATABASE_URL
+    assert meta["optional_integrations_prompted"] is False
 
 
 def test_credentialed_live_runner_detects_receiver_process_identity_change():

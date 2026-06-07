@@ -80,6 +80,16 @@ def main() -> None:
         action="store_true",
         help="Prompt for optional Datadog, PagerDuty, and Slack credentials instead of only reading them from the environment.",
     )
+    parser.add_argument(
+        "--accept-defaults",
+        action="store_true",
+        help="Use environment values and built-in defaults without stopping at each prompt.",
+    )
+    parser.add_argument(
+        "--auto-approve",
+        action="store_true",
+        help="Submit the structured approval command without an interactive APPROVE prompt.",
+    )
     args = parser.parse_args()
 
     run_id = int(time.time())
@@ -93,6 +103,7 @@ def main() -> None:
         env, credential_meta = _collect_credentials(
             args.checkpoint_backend,
             prompt_optional_integrations=args.prompt_optional_integrations,
+            accept_defaults=args.accept_defaults,
         )
         env["SENTINEL_MODEL_ENDPOINT"] = GROQ_RESPONSES_ENDPOINT
         env.setdefault("SENTINEL_MODEL", DEFAULT_GROQ_MODEL)
@@ -197,10 +208,14 @@ def main() -> None:
                     "recommendation": after_restart.get("recommendation"),
                 }
             )
-            confirmation = input("Type APPROVE to submit the real structured approval command: ").strip()
-            if confirmation != "APPROVE":
-                log.json({"status": "approval_aborted_by_user"})
-                raise SystemExit(1)
+            if args.auto_approve:
+                confirmation = "APPROVE"
+                log.json({"status": "approval_auto_confirmed_by_runner"})
+            else:
+                confirmation = input("Type APPROVE to submit the real structured approval command: ").strip()
+                if confirmation != "APPROVE":
+                    log.json({"status": "approval_aborted_by_user"})
+                    raise SystemExit(1)
             approval_response = client.post(
                 f"{args.base_url.rstrip('/')}/investigations/{investigation_id}/approval",
                 headers=operator_headers,
@@ -260,21 +275,23 @@ def _collect_credentials(
     checkpoint_backend: str,
     *,
     prompt_optional_integrations: bool = False,
+    accept_defaults: bool = False,
 ) -> tuple[dict[str, str], dict[str, Any]]:
     print("SENTINEL real live E2E credential prompts")
     print("Secrets are not echoed. Press Enter on optional prompts to leave them unset.")
     env: dict[str, str] = {}
-    env["GROQ_API_KEY"] = _prompt_secret("GROQ_API_KEY", required=True)
-    env["GITHUB_TOKEN"] = _prompt_secret("GITHUB_TOKEN", required=True)
-    env["GITHUB_OWNER"] = _prompt_text("GITHUB_OWNER", required=True, default=os.getenv("GITHUB_OWNER"))
-    env["GITHUB_REPO"] = _prompt_text("GITHUB_REPO", required=True, default=os.getenv("GITHUB_REPO"))
-    env["DISCORD_WEBHOOK_URL"] = _prompt_secret("DISCORD_WEBHOOK_URL", required=True)
+    env["GROQ_API_KEY"] = _prompt_secret("GROQ_API_KEY", required=True, default=os.getenv("GROQ_API_KEY"), accept_default=accept_defaults)
+    env["GITHUB_TOKEN"] = _prompt_secret("GITHUB_TOKEN", required=True, default=os.getenv("GITHUB_TOKEN"), accept_default=accept_defaults)
+    env["GITHUB_OWNER"] = _prompt_text("GITHUB_OWNER", required=True, default=os.getenv("GITHUB_OWNER"), accept_default=accept_defaults)
+    env["GITHUB_REPO"] = _prompt_text("GITHUB_REPO", required=True, default=os.getenv("GITHUB_REPO"), accept_default=accept_defaults)
+    env["DISCORD_WEBHOOK_URL"] = _prompt_secret("DISCORD_WEBHOOK_URL", required=True, default=os.getenv("DISCORD_WEBHOOK_URL"), accept_default=accept_defaults)
     generated_token = secrets.token_urlsafe(32)
-    env["SENTINEL_API_TOKEN"] = _prompt_secret("SENTINEL_API_TOKEN", required=True, default=generated_token)
+    env["SENTINEL_API_TOKEN"] = _prompt_secret("SENTINEL_API_TOKEN", required=True, default=os.getenv("SENTINEL_API_TOKEN") or generated_token, accept_default=accept_defaults)
     prompted_database_url = _prompt_text(
         "DATABASE_URL",
         required=True,
         default=os.getenv("DATABASE_URL") or LOCAL_POSTGRES_DATABASE_URL,
+        accept_default=accept_defaults,
     )
     credential_meta: dict[str, Any] = {
         "database_url_prompted": True,
@@ -286,6 +303,7 @@ def _collect_credentials(
             "SQLITE_CHECKPOINT_DATABASE_URL",
             required=True,
             default=os.getenv("SQLITE_CHECKPOINT_DATABASE_URL") or SQLITE_CHECKPOINT_DATABASE_URL,
+            accept_default=accept_defaults,
         )
         env["DATABASE_URL"] = sqlite_checkpoint_url
         credential_meta["effective_database_url_prompt"] = "SQLITE_CHECKPOINT_DATABASE_URL"
@@ -298,23 +316,27 @@ def _collect_credentials(
         "REDIS_URL",
         required=True,
         default=os.getenv("REDIS_URL") or "redis://redis:6379/0",
+        accept_default=accept_defaults,
     )
-    env["PROMETHEUS_URL"] = _prompt_text("PROMETHEUS_URL", required=True, default=os.getenv("PROMETHEUS_URL") or "http://prometheus:9090")
-    env["LOKI_URL"] = _prompt_text("LOKI_URL", required=True, default=os.getenv("LOKI_URL") or "http://loki:3100")
+    env["PROMETHEUS_URL"] = _prompt_text("PROMETHEUS_URL", required=True, default=os.getenv("PROMETHEUS_URL") or "http://prometheus:9090", accept_default=accept_defaults)
+    env["LOKI_URL"] = _prompt_text("LOKI_URL", required=True, default=os.getenv("LOKI_URL") or "http://loki:3100", accept_default=accept_defaults)
     env["SENTINEL_APPROVER_ID"] = _prompt_text(
         "SENTINEL_APPROVER_ID",
         required=True,
         default=os.getenv("SENTINEL_APPROVER_ID") or os.getenv("USER") or "eng-oncall",
+        accept_default=accept_defaults,
     )
     env["SENTINEL_DEFAULT_SERVICE"] = _prompt_text(
         "SENTINEL_DEFAULT_SERVICE",
         required=True,
         default=os.getenv("SENTINEL_DEFAULT_SERVICE") or "payment-service",
+        accept_default=accept_defaults,
     )
     host_kubeconfig = _prompt_text(
         "HOST/CONTAINER_KUBECONFIG",
         required=False,
         default=os.getenv("CONTAINER_KUBECONFIG") or str(Path.home() / ".kube" / "config"),
+        accept_default=accept_defaults,
     )
     if host_kubeconfig:
         env["CONTAINER_KUBECONFIG"] = host_kubeconfig
@@ -323,8 +345,9 @@ def _collect_credentials(
         "KUBERNETES_NAMESPACE",
         required=True,
         default=os.getenv("KUBERNETES_NAMESPACE") or "default",
+        accept_default=accept_defaults,
     )
-    env["SENTINEL_MODEL"] = _prompt_text("SENTINEL_MODEL", required=True, default=os.getenv("SENTINEL_MODEL") or DEFAULT_GROQ_MODEL)
+    env["SENTINEL_MODEL"] = _prompt_text("SENTINEL_MODEL", required=True, default=os.getenv("SENTINEL_MODEL") or DEFAULT_GROQ_MODEL, accept_default=accept_defaults)
     optional_present: list[str] = []
     for name in OPTIONAL_INTEGRATION_ENV_VARS:
         value = (
@@ -340,7 +363,17 @@ def _collect_credentials(
     return env, credential_meta
 
 
-def _prompt_text(name: str, *, required: bool, default: str | None = None) -> str:
+def _prompt_text(
+    name: str,
+    *,
+    required: bool,
+    default: str | None = None,
+    accept_default: bool = False,
+) -> str:
+    if accept_default and default:
+        return default
+    if accept_default and required and not default:
+        raise SystemExit(f"{name} is required but no environment value or default is available.")
     suffix = f" [{_display_default(default)}]" if default else ""
     while True:
         value = input(f"{name}{suffix}: ").strip()
@@ -351,7 +384,17 @@ def _prompt_text(name: str, *, required: bool, default: str | None = None) -> st
         print(f"{name} is required.")
 
 
-def _prompt_secret(name: str, *, required: bool, default: str | None = None) -> str:
+def _prompt_secret(
+    name: str,
+    *,
+    required: bool,
+    default: str | None = None,
+    accept_default: bool = False,
+) -> str:
+    if accept_default and default:
+        return default
+    if accept_default and required and not default:
+        raise SystemExit(f"{name} is required but no environment value or default is available.")
     suffix = " [set]" if default else ""
     while True:
         value = getpass.getpass(f"{name}{suffix}: ").strip()
@@ -390,6 +433,8 @@ def _load_or_prompt_payload(args: argparse.Namespace, log: "_LiveLog") -> dict[s
         if not isinstance(payload, dict):
             raise SystemExit("Webhook payload file must contain a JSON object.")
         return payload
+    if args.accept_defaults:
+        return _build_real_slow_query_payload(args, log, accept_defaults=True)
     print("Paste a real generic webhook JSON payload, then press Enter on a blank line.")
     print(
         "Or press Enter immediately to trigger the local real /slow-query workload, "
@@ -409,15 +454,21 @@ def _load_or_prompt_payload(args: argparse.Namespace, log: "_LiveLog") -> dict[s
     return _build_real_slow_query_payload(args, log)
 
 
-def _build_real_slow_query_payload(args: argparse.Namespace, log: "_LiveLog") -> dict[str, Any]:
+def _build_real_slow_query_payload(
+    args: argparse.Namespace,
+    log: "_LiveLog",
+    *,
+    accept_defaults: bool = False,
+) -> dict[str, Any]:
     print("Building a real local /slow-query incident payload.")
     print("This resets the live SQLite workload, sends real HTTP requests, and waits for Prometheus to scrape it.")
-    incident_id = _prompt_text("REAL_INCIDENT_ID", required=True, default=f"LIVE-SLOW-{int(time.time())}")
-    services = _prompt_services()
+    incident_id = _prompt_text("REAL_INCIDENT_ID", required=True, default=f"LIVE-SLOW-{int(time.time())}", accept_default=accept_defaults)
+    services = _prompt_services(accept_defaults=accept_defaults)
     evidence_note = _prompt_text(
         "REAL_EVIDENCE_NOTE",
         required=True,
         default="local /slow-query traffic produced Prometheus and Loki evidence",
+        accept_default=accept_defaults,
     )
     workload = _prepare_slow_query_workload(args, log)
     occurred_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
@@ -430,11 +481,12 @@ def _build_real_slow_query_payload(args: argparse.Namespace, log: "_LiveLog") ->
     )
 
 
-def _prompt_services() -> list[str]:
+def _prompt_services(*, accept_defaults: bool = False) -> list[str]:
     services_raw = _prompt_text(
         "AFFECTED_SERVICES comma-separated, must include 2+ for subagent proof",
         required=True,
         default="payment-service,checkout-service",
+        accept_default=accept_defaults,
     )
     services = [item.strip() for item in services_raw.split(",") if item.strip()]
     if len(services) < 2:
