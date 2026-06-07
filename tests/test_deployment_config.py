@@ -13,6 +13,7 @@ def test_compose_uses_separate_host_and_container_kubeconfig_paths():
     env_example = (ROOT / ".env.example").read_text()
 
     assert "${CONTAINER_KUBECONFIG:-~/.kube/config}:/root/.kube/config:ro" in compose
+    assert "sentinel-data:/data" in compose
     assert "KUBECONFIG: /root/.kube/config" in compose
     assert "HOST_KUBECONFIG=~/.kube/config" in env_example
     assert "CONTAINER_KUBECONFIG=.sentinel/kubeconfig.container" in env_example
@@ -80,6 +81,7 @@ def test_compose_passes_live_provider_configuration_into_sentinel_service():
     assert "KUBECONFIG: /root/.kube/config" in compose
     assert "DATABASE_URL: ${DATABASE_URL:-postgresql://" in compose
     assert "REDIS_URL: ${REDIS_URL:-redis://" in compose
+    assert "sentinel-data:" in compose
 
 
 def test_compose_keeps_postgres_credentials_configurable():

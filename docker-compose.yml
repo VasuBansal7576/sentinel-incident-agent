@@ -61,6 +61,7 @@ services:
       KUBECONFIG: /root/.kube/config
     volumes:
       - ${CONTAINER_KUBECONFIG:-~/.kube/config}:/root/.kube/config:ro
+      - sentinel-data:/data
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS -H \"Authorization: Bearer $$SENTINEL_API_TOKEN\" http://localhost:8000/ready/live"]
       interval: 60s
@@ -118,6 +119,7 @@ services:
       - sentinel-loki:/loki
 
 volumes:
+  sentinel-data:
   sentinel-postgres:
   sentinel-prometheus:
   sentinel-loki:

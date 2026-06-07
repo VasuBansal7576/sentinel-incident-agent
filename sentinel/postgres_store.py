@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from threading import RLock
 from typing import Any
 
@@ -316,6 +317,15 @@ class PostgresInvestigationStore:
 
 
 def build_store(database_url: str | None):
+    if database_url and database_url.startswith("sqlite:///"):
+        from sentinel.store import SQLiteInvestigationStore
+
+        path = database_url.removeprefix("sqlite:///")
+        if path != ":memory:":
+            expanded = Path(path).expanduser()
+            expanded.parent.mkdir(parents=True, exist_ok=True)
+            path = str(expanded)
+        return SQLiteInvestigationStore(path)
     if database_url:
         return PostgresInvestigationStore(database_url)
     from sentinel.store import SQLiteInvestigationStore

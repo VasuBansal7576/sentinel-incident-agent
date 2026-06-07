@@ -1,7 +1,7 @@
 import pytest
 
 from sentinel.errors import ToolErrorKind, ToolExecutionError
-from sentinel.postgres_store import PostgresInvestigationStore
+from sentinel.postgres_store import PostgresInvestigationStore, build_store
 from sentinel.store import SQLiteInvestigationStore
 
 
@@ -15,6 +15,15 @@ def test_sqlite_store_can_lookup_idempotency_key_owner(tmp_path):
     assert duplicate is False
     assert store.lookup_idempotency_key("PD-1:webhook") == "inv-1"
     assert store.lookup_idempotency_key("missing") is None
+
+
+def test_build_store_accepts_sqlite_database_url(tmp_path):
+    db_path = tmp_path / "nested" / "sentinel.db"
+    store = build_store(f"sqlite:///{db_path}")
+
+    assert isinstance(store, SQLiteInvestigationStore)
+    assert db_path.exists()
+    assert store.ping() is True
 
 
 def test_sqlite_store_rejects_empty_oauth_token_before_persistence(tmp_path):

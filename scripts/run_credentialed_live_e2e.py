@@ -38,6 +38,15 @@ def main() -> None:
     parser.add_argument("--skip-compose", action="store_true", help="Use an already running receiver.")
     parser.add_argument("--compose-project", default="sentinel-live")
     parser.add_argument("--log-path", default=None)
+    parser.add_argument(
+        "--checkpoint-backend",
+        choices=("sqlite", "postgres"),
+        default="sqlite",
+        help=(
+            "Store backend used for the restart proof. Defaults to sqlite to satisfy "
+            "the video checkpoint requirement; use postgres for the production-style Docker default."
+        ),
+    )
     args = parser.parse_args()
 
     run_id = int(time.time())
@@ -46,7 +55,7 @@ def main() -> None:
     log_path = Path(args.log_path) if args.log_path else sentinel_dir / f"live-run-{run_id}.log"
     env_file = sentinel_dir / f"live-run-{run_id}.env"
 
-    env = _collect_credentials()
+    env = _collect_credentials(args.checkpoint_backend)
     env["SENTINEL_MODEL_ENDPOINT"] = GROQ_RESPONSES_ENDPOINT
     env.setdefault("SENTINEL_MODEL", DEFAULT_GROQ_MODEL)
     env.setdefault("SENTINEL_ENV", "production")
@@ -96,7 +105,11 @@ def main() -> None:
                     "investigation_id": investigation_id,
                     "status_before_restart": latest.get("status"),
                     "tool_calls_before_restart": before_restart_calls,
-                    "store_note": "This proves durable checkpoint resume at the approval boundary for the configured store.",
+                    "checkpoint_backend": args.checkpoint_backend,
+                    "store_note": (
+                        "This proves durable checkpoint resume at the approval boundary "
+                        f"for the {args.checkpoint_backend} store."
+                    ),
                 }
             )
             if args.skip_compose:
@@ -154,6 +167,7 @@ def main() -> None:
                 completed,
                 checkpoint_recovered=checkpoint_recovered,
                 approval_submitted=approval_submitted,
+                checkpoint_backend=args.checkpoint_backend,
             )
             log.section("verification_summary")
             log.json(summary)
@@ -163,7 +177,7 @@ def main() -> None:
     print(f"Live run log: {log_path}")
 
 
-def _collect_credentials() -> dict[str, str]:
+def _collect_credentials(checkpoint_backend: str) -> dict[str, str]:
     print("SENTINEL real live E2E credential prompts")
     print("Secrets are not echoed. Press Enter on optional prompts to leave them unset.")
     env: dict[str, str] = {}
@@ -174,10 +188,15 @@ def _collect_credentials() -> dict[str, str]:
     env["DISCORD_WEBHOOK_URL"] = _prompt_secret("DISCORD_WEBHOOK_URL", required=True)
     generated_token = secrets.token_urlsafe(32)
     env["SENTINEL_API_TOKEN"] = _prompt_secret("SENTINEL_API_TOKEN", required=True, default=generated_token)
+    default_database_url = (
+        "sqlite:////data/sentinel-live-checkpoint.sqlite3"
+        if checkpoint_backend == "sqlite"
+        else "postgresql://sentinel:change-me@postgres:5432/sentinel"
+    )
     env["DATABASE_URL"] = _prompt_text(
         "DATABASE_URL",
         required=True,
-        default=os.getenv("DATABASE_URL") or "postgresql://sentinel:change-me@postgres:5432/sentinel",
+        default=os.getenv("DATABASE_URL") or default_database_url,
     )
     env["REDIS_URL"] = _prompt_text(
         "REDIS_URL",
@@ -387,7 +406,13 @@ def _approval_payload(status: dict[str, Any]) -> dict[str, str]:
     }
 
 
-def _verification_summary(status: dict[str, Any], *, checkpoint_recovered: bool, approval_submitted: bool) -> dict[str, Any]:
+def _verification_summary(
+    status: dict[str, Any],
+    *,
+    checkpoint_recovered: bool,
+    approval_submitted: bool,
+    checkpoint_backend: str,
+) -> dict[str, Any]:
     model_plans = status.get("model_tool_plans") if isinstance(status.get("model_tool_plans"), list) else []
     service_reports = status.get("service_reports") if isinstance(status.get("service_reports"), list) else []
     tool_calls = int(status.get("tool_calls") or 0)
@@ -405,6 +430,7 @@ def _verification_summary(status: dict[str, Any], *, checkpoint_recovered: bool,
         status.get("status") == "completed"
         and approval_submitted
         and checkpoint_recovered
+        and checkpoint_backend == "sqlite"
         and tool_calls >= MIN_TOOL_CALLS
         and has_groq_model
         and has_subagent
@@ -418,6 +444,7 @@ def _verification_summary(status: dict[str, Any], *, checkpoint_recovered: bool,
         "tool_calls": tool_calls,
         "has_groq_model_plan": has_groq_model,
         "has_subagent": has_subagent,
+        "checkpoint_backend": checkpoint_backend,
         "checkpoint_recovered": checkpoint_recovered,
         "approval_submitted": approval_submitted,
         "discord_notified": bool(status.get("discord_notified")),
@@ -430,7 +457,14 @@ def _verification_summary(status: dict[str, Any], *, checkpoint_recovered: bool,
 
 def _finalize_failure(log: "_LiveLog", status: dict[str, Any], *, checkpoint_recovered: bool) -> None:
     log.section("verification_failed")
-    log.json(_verification_summary(status, checkpoint_recovered=checkpoint_recovered, approval_submitted=False))
+    log.json(
+        _verification_summary(
+            status,
+            checkpoint_recovered=checkpoint_recovered,
+            approval_submitted=False,
+            checkpoint_backend="unknown",
+        )
+    )
 
 
 def _wait_receiver_ready(base_url: str, api_token: str, timeout_seconds: int, log: "_LiveLog") -> None:
