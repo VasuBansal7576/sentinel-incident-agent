@@ -122,6 +122,29 @@ def test_preflight_can_skip_compose_checks(monkeypatch, tmp_path):
     assert not any(check["name"].startswith("docker.") for check in summary["checks"])
 
 
+def test_apply_cleanup_runs_only_safe_docker_compose_down(monkeypatch, tmp_path):
+    calls = []
+
+    def run(command, **kwargs):
+        calls.append((command, kwargs["cwd"]))
+        return subprocess.CompletedProcess(args=command, returncode=0, stdout="removed\n", stderr="")
+
+    monkeypatch.setattr(preflight.subprocess, "run", run)
+
+    summary = preflight.apply_cleanup_commands(
+        [
+            "docker compose -p sentinet down",
+            "lsof -nP -iTCP:8000 -sTCP:LISTEN",
+        ],
+        project_root=tmp_path,
+    )
+
+    assert summary["passed"] is True
+    assert summary["applied"] is True
+    assert calls == [(["docker", "compose", "-p", "sentinet", "down"], tmp_path)]
+    assert summary["results"][1]["skipped"] is True
+
+
 def test_port_free_checks_ipv4_and_ipv6_loopback(monkeypatch):
     calls = []
 

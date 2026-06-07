@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 import shutil
 import socket
 import subprocess
@@ -39,6 +40,11 @@ def main() -> None:
     parser.add_argument("--project-root", type=Path, default=PROJECT_ROOT)
     parser.add_argument("--compose-project", default="sentinel-live")
     parser.add_argument("--skip-compose", action="store_true")
+    parser.add_argument(
+        "--apply-cleanup",
+        action="store_true",
+        help="Run safe Docker compose cleanup commands suggested by the first preflight, then check again.",
+    )
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     args = parser.parse_args()
 
@@ -47,6 +53,14 @@ def main() -> None:
         compose_project=args.compose_project,
         check_compose=not args.skip_compose,
     )
+    if args.apply_cleanup and summary["cleanup_commands"]:
+        cleanup = apply_cleanup_commands(summary["cleanup_commands"], project_root=args.project_root)
+        summary = run_preflight(
+            project_root=args.project_root,
+            compose_project=args.compose_project,
+            check_compose=not args.skip_compose,
+        )
+        summary["cleanup"] = cleanup
     if args.json:
         print(json.dumps(summary, indent=2, sort_keys=True))
     else:
@@ -132,6 +146,57 @@ def run_preflight(
         "warnings": warnings,
         "checks": checks,
     }
+
+
+def apply_cleanup_commands(commands: list[str], *, project_root: Path = PROJECT_ROOT) -> dict[str, Any]:
+    results: list[dict[str, Any]] = []
+    for command in commands:
+        if not _is_safe_cleanup_command(command):
+            results.append(
+                {
+                    "command": command,
+                    "applied": False,
+                    "skipped": True,
+                    "reason": "not an automatic cleanup command; run it manually if needed",
+                }
+            )
+            continue
+        proc = subprocess.run(
+            shlex.split(command),
+            cwd=project_root,
+            text=True,
+            capture_output=True,
+            timeout=120,
+            check=False,
+        )
+        results.append(
+            {
+                "command": command,
+                "applied": True,
+                "skipped": False,
+                "returncode": proc.returncode,
+                "stdout_tail": proc.stdout[-1000:],
+                "stderr_tail": proc.stderr[-1000:],
+            }
+        )
+    return {
+        "applied": any(result["applied"] for result in results),
+        "passed": all(
+            result["skipped"] or result.get("returncode") == 0
+            for result in results
+        ),
+        "results": results,
+    }
+
+
+def _is_safe_cleanup_command(command: str) -> bool:
+    parts = shlex.split(command)
+    return (
+        len(parts) == 5
+        and parts[:3] == ["docker", "compose", "-p"]
+        and parts[4] == "down"
+        and bool(parts[3].strip())
+    )
 
 
 def _command_available(name: str) -> dict[str, Any]:
@@ -367,6 +432,11 @@ def _human_summary(summary: dict[str, Any]) -> str:
     if summary["cleanup_commands"]:
         lines.append("Suggested cleanup commands:")
         lines.extend(f"- {command}" for command in summary["cleanup_commands"])
+    if summary.get("cleanup"):
+        lines.append("Cleanup results:")
+        for result in summary["cleanup"]["results"]:
+            status = "SKIP" if result["skipped"] else f"EXIT {result['returncode']}"
+            lines.append(f"- {status}: {result['command']}")
     return "\n".join(lines)
 
 
