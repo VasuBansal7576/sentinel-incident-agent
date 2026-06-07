@@ -1,4 +1,4 @@
-SENTINEL is a production-shaped incident agent. The deterministic path proves 26-step long-horizon orchestration with 37 tool calls. The live path proves real operational integration: Prometheus metrics → Loki logs → missing index diagnosis → human approval → idx_orders_user_id creation → verified fix → Discord timeline.
+SENTINEL is a production-shaped incident agent. The deterministic path proves 26-step long-horizon orchestration with 37 tool calls. The live path proves 22 real tool calls across Prometheus, Loki, SQLite, generic webhook, and Discord: metrics -> logs -> missing index diagnosis -> human approval -> idx_orders_user_id creation -> verified fix -> Discord timeline.
 
 # SENTINEL
 
@@ -7,7 +7,7 @@ SENTINEL is a self-hosted DevOps incident investigation agent for the first pain
 The submission has two proof paths:
 
 - **Deterministic path:** `python3 scripts/run_sentinel_demo.py` exercises the full 26-step state machine with 37 recorded tool calls, structured evidence, scoped subagents, approval, remediation, verification, and post-mortem output.
-- **Live path:** `python3 scripts/run_real_slow_query_incident.py --summary-output .sentinel/real-slow-query-summary.json` deploys SENTINEL, Prometheus, and Loki to a local kind cluster; generates real `/slow-query` latency; receives a real Prometheus alert payload; reads real Prometheus and Loki evidence; requests approval; creates `idx_orders_user_id`; verifies latency improvement; and posts the full timeline to Discord.
+- **Live path:** `python3 scripts/run_real_slow_query_incident.py --summary-output .sentinel/real-slow-query-summary.json` deploys SENTINEL, Prometheus, and Loki to a local kind cluster; generates real `/slow-query` latency; receives a real Prometheus alert payload; executes 22 recorded tool calls; reads real Prometheus and Loki evidence; requests approval; creates `idx_orders_user_id`; verifies latency improvement; and posts the full timeline to Discord.
 
 ## Why This Exists
 
@@ -62,9 +62,11 @@ The live run creates a local kind cluster, deploys SENTINEL with Prometheus and 
 
 The last successful live proof showed:
 
-- Prometheus latency before fix: `162.6ms`.
-- Prometheus latency after fix: `5.4ms`.
+- Tool calls: `22`.
+- Prometheus latency before fix: `161.6ms`.
+- Prometheus latency after fix: `3.3ms`.
 - Loki evidence: sequential scan on `SELECT * FROM orders WHERE user_id = ?`.
+- Prometheus checks: alerting rules, target health, error rate, queue depth, network RTT, uptime, CPU, and memory.
 - Approved remediation: `CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id)`.
 - Discord timeline: alert received, evidence read, approval received, index created, fix verified.
 

@@ -2,7 +2,7 @@
 
 SENTINEL is a self-hosted incident-response agent. It attaches an Investigation to an incoming alert, gathers evidence across operational systems, spawns scoped subagents when the incident needs service-local investigation, asks for human approval before mutation, executes only the approved action, verifies recovery, and writes the incident timeline.
 
-This file is meant for reviewers and for the video walkthrough. It points to the exact files that prove the architecture is real.
+This file is meant for reviewers. It points to the exact files that prove the architecture is real.
 
 ## High-Level Diagram
 
@@ -53,7 +53,7 @@ flowchart TD
 | Long-horizon run | [scripts/run_sentinel_demo.py](scripts/run_sentinel_demo.py), [docs/subagent-proof.md](docs/subagent-proof.md) | Demo produces 37 tool calls and 26 plan steps in one completed investigation. |
 | Human approval boundary | [sentinel/orchestrator.py](sentinel/orchestrator.py), [sentinel/models.py](sentinel/models.py) | `ApprovalRequest`, `ApprovalCommand`, `_approval_command_rejection_reason`, `_continue_after_approval`. |
 | Live adapters | [sentinel/real_tools.py](sentinel/real_tools.py), [sentinel/live_clients.py](sentinel/live_clients.py) | `RealTool`, `LiveToolFactory`, `LiveToolRouter`, provider clients, retry/error normalization, handler coverage. |
-| Live proof | [docs/live-proof.md](docs/live-proof.md), `.sentinel/real-slow-query-summary.json` | Prometheus alert, Loki slow-query log, SQLite index creation, Discord timeline, latency improvement from 162.6ms to 5.4ms. |
+| Live proof | [docs/live-proof.md](docs/live-proof.md), `.sentinel/real-slow-query-summary.json` | 22 recorded live tool calls, Prometheus alert/evidence, Loki slow-query log, SQLite index creation, Discord timeline, latency improvement from 161.6ms to 3.3ms. |
 | Deployment shape | [docker-compose.yml](docker-compose.yml), [Dockerfile](Dockerfile), [sentinel/webapp.py](sentinel/webapp.py) | FastAPI receiver, Postgres, Redis, Prometheus, Loki, readiness and metrics endpoints. |
 | Evaluation harness | [sentinel/evaluation.py](sentinel/evaluation.py), [tests/test_evaluation.py](tests/test_evaluation.py) | Scenario oracles for golden path, degraded-tool behavior, and Watch safety. |
 | Production tests | [tests/test_production_wiring.py](tests/test_production_wiring.py), [tests/test_production_security.py](tests/test_production_security.py), [tests/test_live_artifacts.py](tests/test_live_artifacts.py) | Webhook/OAuth/security, pagination, malformed provider payloads, live evidence validation, and mutation scope. |
@@ -80,9 +80,8 @@ flowchart TD
 | 50+ tools across at least 4 namespaces | [sentinel/tools.py](sentinel/tools.py) declares 52 tools across `observe`, `repo`, `infra`, and `comms`; [tests/test_tools.py](tests/test_tools.py) asserts the exact counts. |
 | Model-driven tool selection | [sentinel/model_client.py](sentinel/model_client.py) sends the tool schemas and eligible names to a model; [docs/model-driven-proof.md](docs/model-driven-proof.md) records a hosted model selection; [tests/test_model_client.py](tests/test_model_client.py) verifies state-dependent selection. |
 | Real subagent orchestration | [sentinel/tools.py](sentinel/tools.py) registers `infra.spawn_service_investigator`; [sentinel/subagents.py](sentinel/subagents.py) creates isolated contexts and scoped tool sets; [docs/subagent-proof.md](docs/subagent-proof.md) shows denied infra/comms access inside the child. |
-| 20+ tool-call long-horizon execution | [scripts/run_sentinel_demo.py](scripts/run_sentinel_demo.py) and [docs/subagent-proof.md](docs/subagent-proof.md) show a 37-call, 26-step completed run. |
+| 20+ tool-call long-horizon execution | [scripts/run_real_slow_query_incident.py](scripts/run_real_slow_query_incident.py) and [docs/live-proof.md](docs/live-proof.md) show a 22-call real live run; [scripts/run_sentinel_demo.py](scripts/run_sentinel_demo.py) and [docs/subagent-proof.md](docs/subagent-proof.md) also show a 37-call, 26-step deterministic run. |
 | Production scaffolding | [sentinel/real_tools.py](sentinel/real_tools.py), [sentinel/live_clients.py](sentinel/live_clients.py), [sentinel/webapp.py](sentinel/webapp.py), [docker-compose.yml](docker-compose.yml), and the `tests/` suite cover retries, rate limits, typed errors, audit records, live adapters, deployment shape, and unit/integration paths. |
 | Composable tool inputs/outputs | `ServiceIncidentReport` from [sentinel/subagents.py](sentinel/subagents.py) is consumed by the parent in [sentinel/orchestrator.py](sentinel/orchestrator.py); [tests/test_orchestrator.py](tests/test_orchestrator.py) proves the child report affects parent diagnosis confidence. |
 | One-page memo | [MEMO.md](MEMO.md). |
-| Video walkthrough | Use this file plus `.submission/VIDEO_SCRIPT.md` as the screen order. |
 | Native unedited traces | The public repo has [codex-traces-redacted.jsonl](codex-traces-redacted.jsonl) for convenience; the native unedited Codex JSONL is submitted separately as the email attachment. |

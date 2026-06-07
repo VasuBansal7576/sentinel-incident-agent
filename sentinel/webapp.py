@@ -969,6 +969,7 @@ def _investigation_response(state: InvestigationState) -> dict[str, Any]:
         "status": state.status.value,
         "current_state": state.current_state.value,
         "tool_calls": len(state.tool_calls),
+        "tool_call_names": [call.tool_name for call in state.tool_calls],
         "live_provider_proofs": provider_proofs,
         "live_tool_proofs": tool_proofs,
         "slack_notified": slack_notified,

@@ -630,9 +630,71 @@ class SentinelOrchestrator:
             tool_name="observe.check_db_slow_queries",
         )
 
+        next_step = 7
+        for tool_name, action, payload in [
+            (
+                "observe.fetch_alerting_rules",
+                "Read real Prometheus alerting rules",
+                observability_payload(state, primary_service),
+            ),
+            (
+                "observe.read_dashboard_snapshot",
+                "Read real Prometheus target health",
+                {
+                    **observability_payload(state, primary_service),
+                    "dashboard_id": "prometheus-targets",
+                },
+            ),
+            (
+                "observe.get_error_rate_timeseries",
+                "Check real Prometheus error rate",
+                observability_payload(state, primary_service),
+            ),
+            (
+                "observe.read_queue_depth",
+                "Check real Prometheus queue depth",
+                observability_payload(state, primary_service),
+            ),
+            (
+                "observe.get_network_latency",
+                "Check real Prometheus network latency",
+                observability_payload(state, primary_service),
+            ),
+            (
+                "observe.check_uptime_history",
+                "Check real Prometheus uptime history",
+                observability_payload(state, primary_service),
+            ),
+            (
+                "observe.get_memory_cpu_usage",
+                "Check real Prometheus CPU and memory",
+                observability_payload(state, primary_service),
+            ),
+            (
+                "observe.get_distributed_traces",
+                "Read real Loki trace-shaped events",
+                observability_payload(state, primary_service),
+            ),
+            (
+                "observe.fetch_apm_data",
+                "Read real Loki APM span evidence",
+                observability_payload(state, primary_service),
+            ),
+        ]:
+            result = self._invoke_tool(state, tool_name, payload)
+            self._add_step(
+                state,
+                next_step,
+                action,
+                _tool_step_detail(result),
+                tool_name=tool_name,
+            )
+            next_step += 1
+
         state.diagnosis = self._derive_slow_query_diagnosis(state, logs, metrics, db_logs)
         self._transition(state, StateName.CORRELATION)
-        self._add_step(state, 7, "Correlate Prometheus and Loki evidence", state.diagnosis.summary)
+        self._add_step(state, next_step, "Correlate Prometheus and Loki evidence", state.diagnosis.summary)
+        next_step += 1
         if state.diagnosis.confidence == ConfidenceLevel.INSUFFICIENT:
             return self._finish_insufficient_confidence(
                 state,
@@ -688,7 +750,7 @@ class SentinelOrchestrator:
         )
         self._add_step(
             state,
-            8,
+            next_step,
             "Request structured add-index approval",
             (
                 "Approval request posted to Discord."
@@ -697,6 +759,7 @@ class SentinelOrchestrator:
             ),
             tool_name="comms.post_to_slack",
         )
+        next_step += 1
         approval_notification_confirmed = (
             _tool_result_confirmed_for_live(approval_notification, "comms.post_to_slack")
             if state.scenario_name == "live"
@@ -740,7 +803,7 @@ class SentinelOrchestrator:
                 "approval_command",
                 state.id,
             )
-            self._add_step(state, 9, "Receive structured human approval", "Authorized approver approved the exact add-index request.")
+            self._add_step(state, next_step, "Receive structured human approval", "Authorized approver approved the exact add-index request.")
             self._checkpoint(state)
             return self._continue_after_approval(state)
         self._checkpoint(state)
@@ -1464,6 +1527,7 @@ class SentinelOrchestrator:
                         "Generic Prometheus alert webhook received by SENTINEL.",
                         "SENTINEL read real Loki app logs for /slow-query slow-query events.",
                         f"SENTINEL read real Prometheus latency: before fix {before_text}.",
+                        "SENTINEL checked Prometheus alerts, targets, errors, queue depth, RTT, uptime, CPU/memory, plus Loki trace/APM paths.",
                         "SENTINEL requested human approval for add_index orders.user_id.",
                         "Authorized approver approved the exact add-index request.",
                         "SENTINEL executed CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id).",
@@ -1474,6 +1538,7 @@ class SentinelOrchestrator:
                         "The app executed SELECT * FROM orders WHERE user_id = ? against SQLite.",
                         "Loki logs showed the query using a sequential scan while the index was missing.",
                         f"Prometheus recorded /slow-query latency before fix: {before_text}.",
+                        "Additional Prometheus/Loki checks ruled out error-rate, queue, network, uptime, and resource saturation as primary causes.",
                         f"Prometheus recorded /slow-query latency after fix: {after_text}.",
                         "The approved remediation created idx_orders_user_id on orders(user_id).",
                     ],

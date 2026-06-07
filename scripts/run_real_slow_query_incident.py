@@ -42,6 +42,7 @@ def main() -> None:
     _docker_build()
     _kind_load(args.cluster)
     _apply_stack(webhook)
+    _restart_sentinel()
     _wait_rollouts()
 
     forwards = _start_port_forwards()
@@ -118,6 +119,10 @@ def _apply_stack(discord_webhook: str) -> None:
     }
     _run(["kubectl", "apply", "-f", "-"], input_text=json.dumps(secret))
     _run(["kubectl", "apply", "-f", "-"], input_text=json.dumps(_stack_manifest()))
+
+
+def _restart_sentinel() -> None:
+    _run(["kubectl", "rollout", "restart", "deployment/sentinel", "-n", NAMESPACE])
 
 
 def _stack_manifest() -> dict[str, Any]:
@@ -429,6 +434,7 @@ def _wait_for_status(investigation_id: str, expected: str, timeout: int) -> dict
 
 def _summarize(completed: dict[str, Any], load_stats: dict[str, Any], alert: dict[str, Any]) -> dict[str, Any]:
     message = completed.get("last_discord_message") or ""
+    tool_calls = int(completed.get("tool_calls") or 0)
     required_terms = [
         "missing SQLite index",
         "orders.user_id",
@@ -439,6 +445,7 @@ def _summarize(completed: dict[str, Any], load_stats: dict[str, Any], alert: dic
     ]
     passed = (
         completed.get("status") == "completed"
+        and tool_calls >= 20
         and completed.get("remediation_result", {}).get("status") == "executed"
         and all(term in message for term in required_terms)
     )
@@ -446,7 +453,8 @@ def _summarize(completed: dict[str, Any], load_stats: dict[str, Any], alert: dic
         "passed": passed,
         "status": completed.get("status"),
         "current_state": completed.get("current_state"),
-        "tool_calls": completed.get("tool_calls"),
+        "tool_calls": tool_calls,
+        "tool_call_names": completed.get("tool_call_names") or [],
         "diagnosis": completed.get("diagnosis"),
         "recommendation": completed.get("recommendation"),
         "remediation_result": completed.get("remediation_result"),
@@ -464,6 +472,10 @@ def _render_summary(summary: dict[str, Any]) -> str:
             "REAL SLOW-QUERY INCIDENT DEMO",
             f"passed: {summary['passed']}",
             f"status: {summary['status']} state: {summary['current_state']}",
+            f"tool_calls: {summary['tool_calls']}",
+            f"tool_call_names: {', '.join(summary['tool_call_names'])}",
+            f"live_provider_proofs: {json.dumps(summary['live_provider_proofs'], sort_keys=True)}",
+            f"live_tool_proofs: {json.dumps(summary['live_tool_proofs'], sort_keys=True)}",
             f"diagnosis: {summary['diagnosis']}",
             f"recommendation: {summary['recommendation']}",
             f"remediation: {summary['remediation_result']}",
