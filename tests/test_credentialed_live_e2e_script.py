@@ -146,6 +146,55 @@ def test_credentialed_live_runner_keeps_postgres_database_prompt_and_sqlite_chec
     assert live_e2e.SQLITE_CHECKPOINT_DATABASE_URL == "sqlite:////data/sentinel-live-checkpoint.sqlite3"
 
 
+def test_credentialed_live_runner_reads_optional_integrations_from_env_without_prompt(monkeypatch):
+    monkeypatch.setenv("DD_API_KEY", "dd-api-key")
+    prompted_secrets: list[str] = []
+
+    def fake_prompt_secret(name: str, *, required: bool, default: str | None = None) -> str:
+        prompted_secrets.append(name)
+        if name == "GROQ_API_KEY":
+            return "groq-key"
+        if name == "GITHUB_TOKEN":
+            return "github-token"
+        if name == "DISCORD_WEBHOOK_URL":
+            return "discord-webhook"
+        if name == "SENTINEL_API_TOKEN":
+            return default or "sentinel-token"
+        raise AssertionError(f"unexpected secret prompt: {name}")
+
+    def fake_prompt_text(name: str, *, required: bool, default: str | None = None) -> str:
+        return default or {
+            "GITHUB_OWNER": "owner",
+            "GITHUB_REPO": "repo",
+            "DATABASE_URL": live_e2e.LOCAL_POSTGRES_DATABASE_URL,
+            "SQLITE_CHECKPOINT_DATABASE_URL": live_e2e.SQLITE_CHECKPOINT_DATABASE_URL,
+            "REDIS_URL": "redis://redis:6379/0",
+            "PROMETHEUS_URL": "http://prometheus:9090",
+            "LOKI_URL": "http://loki:3100",
+            "SENTINEL_APPROVER_ID": "vasu-local-approver",
+            "SENTINEL_DEFAULT_SERVICE": "payment-service",
+            "HOST/CONTAINER_KUBECONFIG": "",
+            "KUBERNETES_NAMESPACE": "default",
+            "SENTINEL_MODEL": live_e2e.DEFAULT_GROQ_MODEL,
+        }[name]
+
+    monkeypatch.setattr(live_e2e, "_prompt_secret", fake_prompt_secret)
+    monkeypatch.setattr(live_e2e, "_prompt_text", fake_prompt_text)
+
+    env, meta = live_e2e._collect_credentials("sqlite")
+
+    assert env["DD_API_KEY"] == "dd-api-key"
+    assert "DD_API_KEY" not in prompted_secrets
+    assert prompted_secrets == [
+        "GROQ_API_KEY",
+        "GITHUB_TOKEN",
+        "DISCORD_WEBHOOK_URL",
+        "SENTINEL_API_TOKEN",
+    ]
+    assert meta["optional_integrations_prompted"] is False
+    assert meta["optional_integrations_present"] == ["DD_API_KEY"]
+
+
 def test_credentialed_live_runner_detects_receiver_process_identity_change():
     assert live_e2e._receiver_process_changed(
         {"started_at": "2026-06-07T07:00:00Z", "pid": 1},

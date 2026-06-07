@@ -9,6 +9,14 @@ run_id="${SENTINEL_LIVE_RUN_ID:-$(date +%s)}"
 terminal_log=".sentinel/live-run-${run_id}.log"
 structured_log=".sentinel/live-run-${run_id}.structured.log"
 
+if [[ -f .env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
+  echo "Loaded .env into the recording environment."
+fi
+
 echo "SENTINEL credentialed live E2E recording"
 echo "terminal_log: ${terminal_log}"
 echo "structured_log: ${structured_log}"

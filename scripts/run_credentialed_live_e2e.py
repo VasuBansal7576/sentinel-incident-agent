@@ -33,6 +33,16 @@ REQUIRED_LIVE_TOOL_PROOFS = (
     "comms.post_to_slack",
     "infra.add_database_index",
 )
+OPTIONAL_INTEGRATION_ENV_VARS = (
+    "DD_API_KEY",
+    "DD_APP_KEY",
+    "DD_OAUTH_TOKEN",
+    "PAGERDUTY_API_KEY",
+    "PAGERDUTY_WEBHOOK_SECRET",
+    "PAGERDUTY_WEBHOOK_SUBSCRIPTION_ID",
+    "SLACK_BOT_TOKEN",
+    "SLACK_CHANNEL_ID",
+)
 
 
 def main() -> None:
@@ -65,6 +75,11 @@ def main() -> None:
             "the video checkpoint requirement; use postgres for the production-style Docker default."
         ),
     )
+    parser.add_argument(
+        "--prompt-optional-integrations",
+        action="store_true",
+        help="Prompt for optional Datadog, PagerDuty, and Slack credentials instead of only reading them from the environment.",
+    )
     args = parser.parse_args()
 
     run_id = int(time.time())
@@ -75,7 +90,10 @@ def main() -> None:
 
     with _LiveLog(log_path) as log:
         _run_non_secret_preflight(args, log)
-        env, credential_meta = _collect_credentials(args.checkpoint_backend)
+        env, credential_meta = _collect_credentials(
+            args.checkpoint_backend,
+            prompt_optional_integrations=args.prompt_optional_integrations,
+        )
         env["SENTINEL_MODEL_ENDPOINT"] = GROQ_RESPONSES_ENDPOINT
         env.setdefault("SENTINEL_MODEL", DEFAULT_GROQ_MODEL)
         env.setdefault("SENTINEL_ENV", "production")
@@ -238,7 +256,11 @@ def _run_non_secret_preflight(args: argparse.Namespace, log: "_LiveLog") -> None
         raise SystemExit("Local preflight failed before credential prompts; fix errors or pass --skip-preflight.")
 
 
-def _collect_credentials(checkpoint_backend: str) -> tuple[dict[str, str], dict[str, Any]]:
+def _collect_credentials(
+    checkpoint_backend: str,
+    *,
+    prompt_optional_integrations: bool = False,
+) -> tuple[dict[str, str], dict[str, Any]]:
     print("SENTINEL real live E2E credential prompts")
     print("Secrets are not echoed. Press Enter on optional prompts to leave them unset.")
     env: dict[str, str] = {}
@@ -303,19 +325,18 @@ def _collect_credentials(checkpoint_backend: str) -> tuple[dict[str, str], dict[
         default=os.getenv("KUBERNETES_NAMESPACE") or "default",
     )
     env["SENTINEL_MODEL"] = _prompt_text("SENTINEL_MODEL", required=True, default=os.getenv("SENTINEL_MODEL") or DEFAULT_GROQ_MODEL)
-    for name in (
-        "DD_API_KEY",
-        "DD_APP_KEY",
-        "DD_OAUTH_TOKEN",
-        "PAGERDUTY_API_KEY",
-        "PAGERDUTY_WEBHOOK_SECRET",
-        "PAGERDUTY_WEBHOOK_SUBSCRIPTION_ID",
-        "SLACK_BOT_TOKEN",
-        "SLACK_CHANNEL_ID",
-    ):
-        value = _prompt_secret(name, required=False, default=os.getenv(name))
+    optional_present: list[str] = []
+    for name in OPTIONAL_INTEGRATION_ENV_VARS:
+        value = (
+            _prompt_secret(name, required=False, default=os.getenv(name))
+            if prompt_optional_integrations
+            else os.getenv(name)
+        )
         if value:
             env[name] = value
+            optional_present.append(name)
+    credential_meta["optional_integrations_prompted"] = prompt_optional_integrations
+    credential_meta["optional_integrations_present"] = optional_present
     return env, credential_meta
 
 
