@@ -6,12 +6,12 @@ cd "$ROOT"
 
 mkdir -p .sentinel
 run_id="${SENTINEL_LIVE_RUN_ID:-$(date +%s)}"
-structured_log=".sentinel/live-run-${run_id}.log"
-terminal_log=".sentinel/live-run-${run_id}.terminal.log"
+terminal_log=".sentinel/live-run-${run_id}.log"
+structured_log=".sentinel/live-run-${run_id}.structured.log"
 
 echo "SENTINEL credentialed live E2E recording"
-echo "structured_log: ${structured_log}"
 echo "terminal_log: ${terminal_log}"
+echo "structured_log: ${structured_log}"
 echo "Secrets are entered in the Python prompts; getpass values are not echoed."
 
 set +e

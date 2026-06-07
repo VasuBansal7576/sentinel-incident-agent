@@ -19,5 +19,5 @@ def test_recording_wrapper_is_shell_valid_and_names_both_logs():
     content = SCRIPT.read_text()
     assert "--log-path" in content
     assert ".sentinel/live-run-${run_id}.log" in content
-    assert ".sentinel/live-run-${run_id}.terminal.log" in content
+    assert ".sentinel/live-run-${run_id}.structured.log" in content
     assert "tee" in content

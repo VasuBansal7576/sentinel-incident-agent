@@ -44,6 +44,8 @@ def main() -> None:
 
 
 def verify_log(path: Path) -> dict[str, Any]:
+    requested_path = path
+    path = _resolve_structured_log_path(path)
     entries = parse_log(path)
     credential_payload = _last_payload(entries, "credential_prompts_complete") or {}
     checkpoint_restart = _last_payload(entries, "checkpoint_restart") or {}
@@ -96,7 +98,8 @@ def verify_log(path: Path) -> dict[str, Any]:
     )
     return {
         "passed": passed,
-        "log_path": str(path),
+        "log_path": str(requested_path),
+        "structured_log_path": str(path),
         "credential_prompts": credential_check,
         "webhook": webhook_check,
         "checkpoint_recovered": checkpoint_recovered,
@@ -138,6 +141,24 @@ def parse_log(path: Path) -> list[dict[str, Any]]:
             buffer.append(line)
     _flush_section(entries, current_section, "\n".join(buffer))
     return entries
+
+
+def _resolve_structured_log_path(path: Path) -> Path:
+    if not path.exists():
+        raise FileNotFoundError(path)
+    text = path.read_text(errors="replace")
+    for line in text.splitlines()[:50]:
+        if not line.startswith("structured_log:"):
+            continue
+        raw = line.split(":", 1)[1].strip()
+        if not raw:
+            continue
+        candidate = Path(raw).expanduser()
+        if not candidate.is_absolute():
+            candidate = PROJECT_ROOT / candidate
+        if candidate.exists():
+            return candidate
+    return path
 
 
 def _flush_section(entries: list[dict[str, Any]], section: str | None, text: str) -> None:

@@ -25,6 +25,28 @@ def test_verify_credentialed_live_log_accepts_full_real_run_proof(tmp_path):
     assert summary["discord_notified"] is True
 
 
+def test_verify_credentialed_live_log_follows_terminal_transcript_structured_pointer(tmp_path):
+    structured = tmp_path / "live-run.structured.log"
+    terminal = tmp_path / "live-run.log"
+    structured.write_text(_live_log_text())
+    terminal.write_text(
+        "\n".join(
+            [
+                "SENTINEL credentialed live E2E recording",
+                f"terminal_log: {terminal}",
+                f"structured_log: {structured}",
+                "Secrets are entered in the Python prompts; getpass values are not echoed.",
+            ]
+        )
+    )
+
+    summary = verify.verify_log(terminal)
+
+    assert summary["passed"] is True
+    assert summary["log_path"] == str(terminal)
+    assert summary["structured_log_path"] == str(structured)
+
+
 def test_verify_credentialed_live_log_rejects_thin_summary_without_process_restart(tmp_path):
     log_path = tmp_path / "live-run.log"
     log_path.write_text(
