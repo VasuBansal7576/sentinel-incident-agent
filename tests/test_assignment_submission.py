@@ -50,6 +50,9 @@ def test_submission_trace_strategy_distinguishes_unedited_and_public_safe_artifa
 
     assert "codex-traces-redacted.jsonl" in readme
     assert "public-safe redacted trace copy" in readme
+    assert "Native unedited Codex trace" in readme
+    assert "submitted separately as the email attachment required by `Problem.md`" in readme
+    assert "do not use it as a substitute for the native unedited Codex trace attachment" in readme
     assert "codex-traces-native*.jsonl" in gitignore
     assert "codex-traces-unedited*.jsonl" in gitignore
     assert "codex-traces.jsonl" in gitignore

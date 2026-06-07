@@ -115,4 +115,5 @@ RUN_FREE_TIER_LIVE_E2E_TESTS=1 SENTINEL_LIVE_RECEIVER_URL=http://localhost:8000 
 - [docs/live-proof.md](docs/live-proof.md): redacted Prometheus, Loki, SQLite, and Discord evidence from the live run.
 - [docs/model-driven-proof.md](docs/model-driven-proof.md): hosted model-backed planner proof using the 52-tool registry.
 - [docs/subagent-proof.md](docs/subagent-proof.md): isolated service-investigator proof with scoped tools and structured reports.
-- [codex-traces-redacted.jsonl](codex-traces-redacted.jsonl): public-safe redacted trace copy for repository review convenience.
+- Native unedited Codex trace: submitted separately as the email attachment required by `Problem.md`; it is intentionally not committed because it must remain unedited and may contain local/private material.
+- [codex-traces-redacted.jsonl](codex-traces-redacted.jsonl): public-safe redacted trace copy for repository review convenience only; do not use it as a substitute for the native unedited Codex trace attachment.
