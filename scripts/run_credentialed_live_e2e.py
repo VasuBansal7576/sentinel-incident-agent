@@ -909,12 +909,40 @@ def _wait_receiver_ready(base_url: str, api_token: str, timeout_seconds: int, lo
                     log.section("receiver_ready")
                     log.json(latest)
                     return
+                if isinstance(latest, dict) and _startup_ready_with_data_dependent_loki_gaps(latest):
+                    log.section("receiver_ready_with_data_dependent_loki_gaps")
+                    log.json(latest)
+                    return
             except httpx.HTTPError as exc:
                 latest = {"error": str(exc)}
             time.sleep(3)
     log.section("receiver_not_ready")
     log.json(latest if isinstance(latest, dict) else {"latest": latest})
     raise RuntimeError("Receiver did not become ready.")
+
+
+def _startup_ready_with_data_dependent_loki_gaps(body: dict[str, Any]) -> bool:
+    if body.get("ready") is True:
+        return True
+    if body.get("base_ready") is not True:
+        return False
+    if body.get("missing_live_credentials"):
+        return False
+    failed = [
+        check
+        for check in body.get("checks", [])
+        if isinstance(check, dict) and check.get("passed") is not True
+    ]
+    if not failed:
+        return True
+    allowed_empty_loki_checks = {"loki.logs", "loki.apm_traces"}
+    for check in failed:
+        detail = str(check.get("detail") or "")
+        if check.get("name") not in allowed_empty_loki_checks:
+            return False
+        if "at least one provider record" not in detail:
+            return False
+    return True
 
 
 def _run_compose(command: list[str], env_file: Path, args: argparse.Namespace, log: "_LiveLog") -> None:

@@ -269,6 +269,48 @@ def test_credentialed_live_runner_builds_slow_query_payload_with_workload_proof(
     assert len(payload["alerts"]) == 2
 
 
+def test_credentialed_live_runner_allows_startup_before_loki_has_workload_records():
+    ready_body = {
+        "ready": False,
+        "base_ready": True,
+        "missing_live_credentials": [],
+        "checks": [
+            {"name": "sentinel.state_store", "passed": True},
+            {"name": "github.commits", "passed": True},
+            {
+                "name": "loki.logs",
+                "passed": False,
+                "detail": "response field 'events' must contain at least one provider record",
+            },
+            {
+                "name": "loki.apm_traces",
+                "passed": False,
+                "detail": "response field 'events' must contain at least one provider record",
+            },
+        ],
+    }
+
+    assert live_e2e._startup_ready_with_data_dependent_loki_gaps(ready_body)
+
+
+def test_credentialed_live_runner_still_rejects_non_loki_startup_failures():
+    ready_body = {
+        "ready": False,
+        "base_ready": True,
+        "missing_live_credentials": [],
+        "checks": [
+            {"name": "github.commits", "passed": False, "detail": "bad credentials"},
+            {
+                "name": "loki.logs",
+                "passed": False,
+                "detail": "response field 'events' must contain at least one provider record",
+            },
+        ],
+    }
+
+    assert not live_e2e._startup_ready_with_data_dependent_loki_gaps(ready_body)
+
+
 def test_credentialed_live_runner_reads_latest_prometheus_sample():
     response = {
         "data": {
