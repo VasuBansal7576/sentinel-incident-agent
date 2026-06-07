@@ -6,6 +6,7 @@ SENTINEL is a self-hosted DevOps incident investigation agent for the first pain
 
 The submission has two proof paths:
 
+- **Video walkthrough:** [https://youtu.be/Z9n__Ma3wL4](https://youtu.be/Z9n__Ma3wL4)
 - **Deterministic path:** `python3 scripts/run_sentinel_demo.py` exercises the full 26-step state machine with 37 recorded tool calls, structured evidence, scoped subagents, approval, remediation, verification, and post-mortem output.
 - **Credentialed live path:** `scripts/record_credentialed_live_e2e.sh` starts the local production-shaped stack; prompts for real Groq, GitHub, Discord, database, Redis, and API credentials; generates real `/slow-query` latency; receives a real generic Prometheus alert payload; executes 34 recorded tool calls; reads real Prometheus, Loki, GitHub, and SQLite evidence; restarts and resumes from a SQLite checkpoint; requests approval; creates `idx_orders_user_id`; verifies latency improvement; and posts the full timeline to Discord.
 
@@ -115,7 +116,11 @@ GET  /ready/live
 
 ## Additional Cloud Integrations
 
-The submission proof centers on Groq, GitHub, Prometheus, Loki, SQLite, generic webhooks, and Discord because those were demonstrated end-to-end with real credentials and local operational infrastructure. The codebase also contains additional integration surfaces for Datadog, PagerDuty, Slack, GitHub OAuth, Kubernetes rollback, OAuth token storage, and provider connectivity checks. Treat those as extension points unless they are run with real credentials in the target environment.
+The submission proof centers on Groq, GitHub, Prometheus, Loki, SQLite, generic webhooks, and Discord because those were demonstrated end-to-end with real credentials and local/free operational infrastructure. This keeps the walkthrough reproducible without requiring the reviewer to provision paid SaaS accounts.
+
+Datadog, PagerDuty, Slack, and Kubernetes are also wired as live provider paths behind the same tool contracts and readiness checks. With valid target-environment credentials, SENTINEL routes observability tools to Datadog logs/metrics/APM, incident triggers and on-call context to PagerDuty, communication tools to Slack channels/messages/scheduled updates, and remediation/infrastructure tools to Kubernetes rollout, scale, patch, job, and drain handlers. For the recorded demo, Prometheus/Loki, generic webhooks, Discord, and the local Kubernetes configuration were chosen as the free alternatives for proving the same incident-response loop.
+
+Those paid-provider paths are intentionally fail-closed: if credentials, scopes, or provider confirmations are missing, readiness checks and tool calls report that rather than silently falling back to fake evidence.
 
 ## Tests
 
@@ -134,6 +139,7 @@ RUN_FREE_TIER_LIVE_E2E_TESTS=1 SENTINEL_LIVE_RECEIVER_URL=http://localhost:8000 
 
 ## Reviewer Proof Artifacts
 
+- [Video walkthrough](https://youtu.be/Z9n__Ma3wL4): working build walkthrough, live proof, and assignment requirement callouts.
 - [MEMO.md](MEMO.md): one-page build memo and defended design decision.
 - [architecture.md](architecture.md): architecture diagram and reviewer file map for the 52-tool registry, planner, subagents, live proof, and production scaffolding.
 - [docs/live-proof.md](docs/live-proof.md): redacted Prometheus, Loki, SQLite, and Discord evidence from the live run.
