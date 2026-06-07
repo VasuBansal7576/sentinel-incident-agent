@@ -104,8 +104,9 @@ def run_preflight(
             )
         )
         checks.extend(_docker_port_owner_checks(root, compose_project))
-    for port, name in DEFAULT_PORTS.items():
-        checks.append(_port_warning(port, name, compose_project=compose_project))
+    else:
+        for port, name in DEFAULT_PORTS.items():
+            checks.append(_port_warning(port, name, compose_project=compose_project))
     kubeconfig = Path.home() / ".kube" / "config"
     checks.append(
         _check(
@@ -247,6 +248,18 @@ def _docker_port_owner_checks(root: Path, compose_project: str) -> list[dict[str
                     "severity": "error",
                     "detail": f"localhost:{port} is already owned by compose project {compose_project}: {owner_labels}.",
                     "owners": owner_labels,
+                }
+            )
+        elif not _port_free(port):
+            checks.append(
+                {
+                    "name": f"port.{port}",
+                    "passed": False,
+                    "severity": "error",
+                    "detail": (
+                        f"localhost:{port} for {service} is already in use by a non-Docker "
+                        "or unknown process. Stop that listener before recording."
+                    ),
                 }
             )
     return checks

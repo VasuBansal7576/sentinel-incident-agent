@@ -49,12 +49,25 @@ def test_preflight_reports_ports_and_default_kubeconfig_as_warnings(monkeypatch,
     monkeypatch.setattr(preflight, "_port_free", lambda port: port != 8000)
     monkeypatch.setattr(preflight.Path, "home", lambda: tmp_path)
 
-    summary = preflight.run_preflight(project_root=tmp_path)
+    summary = preflight.run_preflight(project_root=tmp_path, check_compose=False)
 
     assert summary["passed"] is True
     warning_names = {warning["name"] for warning in summary["warnings"]}
     assert "port.8000" in warning_names
     assert "kubeconfig.default" in warning_names
+
+
+def test_preflight_fails_when_required_port_is_owned_by_non_docker_process(monkeypatch, tmp_path):
+    _write_required_files(tmp_path)
+    monkeypatch.setattr(preflight.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(preflight.subprocess, "run", _successful_run)
+    monkeypatch.setattr(preflight, "_port_free", lambda port: port != 8000)
+    monkeypatch.setattr(preflight.Path, "home", lambda: tmp_path)
+
+    summary = preflight.run_preflight(project_root=tmp_path)
+
+    assert summary["passed"] is False
+    assert any(check["name"] == "port.8000" for check in summary["errors"])
 
 
 def test_preflight_fails_when_required_port_is_owned_by_other_compose_project(monkeypatch, tmp_path):
