@@ -26,6 +26,10 @@ REQUIRED_FILES = (
     "scripts/run_credentialed_live_e2e.py",
     "scripts/verify_credentialed_live_log.py",
 )
+_LOCALHOST_TARGETS = (
+    ("127.0.0.1", socket.AF_INET),
+    ("::1", socket.AF_INET6),
+)
 
 
 def main() -> None:
@@ -99,8 +103,9 @@ def run_preflight(
                 failure_detail="docker compose config -q failed.",
             )
         )
+        checks.extend(_docker_port_owner_checks(root, compose_project))
     for port, name in DEFAULT_PORTS.items():
-        checks.append(_port_warning(port, name))
+        checks.append(_port_warning(port, name, compose_project=compose_project))
     kubeconfig = Path.home() / ".kube" / "config"
     checks.append(
         _check(
@@ -177,7 +182,104 @@ def _run_command_check(
     }
 
 
-def _port_warning(port: int, service: str) -> dict[str, Any]:
+def _docker_port_owner_checks(root: Path, compose_project: str) -> list[dict[str, Any]]:
+    try:
+        proc = subprocess.run(
+            ["docker", "ps", "--format", "{{json .}}"],
+            cwd=root,
+            text=True,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+    except Exception as exc:
+        return [
+            {
+                "name": "docker.port_owners",
+                "passed": False,
+                "severity": "error",
+                "detail": f"Could not inspect running Docker containers: {type(exc).__name__}: {exc}",
+            }
+        ]
+    if proc.returncode != 0:
+        return [
+            {
+                "name": "docker.port_owners",
+                "passed": False,
+                "severity": "error",
+                "detail": "Could not inspect running Docker containers.",
+                "stderr_tail": proc.stderr[-1000:],
+            }
+        ]
+    containers = _parse_docker_ps_json_lines(proc.stdout)
+    checks: list[dict[str, Any]] = []
+    for port, service in DEFAULT_PORTS.items():
+        owners = [container for container in containers if _container_publishes_port(container, port)]
+        other_projects = [
+            owner
+            for owner in owners
+            if _compose_project_label(owner) not in {None, compose_project}
+        ]
+        if other_projects:
+            owner_labels = ", ".join(
+                f"{owner.get('Names', '<unknown>')}({_compose_project_label(owner)})"
+                for owner in other_projects
+            )
+            checks.append(
+                {
+                    "name": f"docker.port_owner.{port}",
+                    "passed": False,
+                    "severity": "error",
+                    "detail": (
+                        f"localhost:{port} for {service} is owned by another compose project: "
+                        f"{owner_labels}. Stop stale containers before recording, for example: "
+                        "docker compose -p sentinet down"
+                    ),
+                    "owners": owner_labels,
+                }
+            )
+        elif owners:
+            owner_labels = ", ".join(str(owner.get("Names", "<unknown>")) for owner in owners)
+            checks.append(
+                {
+                    "name": f"docker.port_owner.{port}",
+                    "passed": True,
+                    "severity": "error",
+                    "detail": f"localhost:{port} is already owned by compose project {compose_project}: {owner_labels}.",
+                    "owners": owner_labels,
+                }
+            )
+    return checks
+
+
+def _parse_docker_ps_json_lines(stdout: str) -> list[dict[str, Any]]:
+    containers: list[dict[str, Any]] = []
+    for line in stdout.splitlines():
+        if not line.strip():
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            containers.append(payload)
+    return containers
+
+
+def _container_publishes_port(container: dict[str, Any], port: int) -> bool:
+    ports = str(container.get("Ports") or "")
+    return f":{port}->" in ports or f"127.0.0.1:{port}->" in ports
+
+
+def _compose_project_label(container: dict[str, Any]) -> str | None:
+    labels = str(container.get("Labels") or "")
+    for item in labels.split(","):
+        if item.startswith("com.docker.compose.project="):
+            return item.split("=", 1)[1]
+    return None
+
+
+def _port_warning(port: int, service: str, *, compose_project: str) -> dict[str, Any]:
     free = _port_free(port)
     return _check(
         f"port.{port}",
@@ -185,16 +287,20 @@ def _port_warning(port: int, service: str) -> dict[str, Any]:
         f"localhost:{port} is free for {service}.",
         (
             f"localhost:{port} is already in use. This is okay if it is the existing "
-            f"{service} container for compose project sentinel-live; otherwise stop the process before recording."
+            f"{service} container for compose project {compose_project}; otherwise stop the process before recording."
         ),
         severity="warning",
     )
 
 
 def _port_free(port: int) -> bool:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+    return all(_host_port_free(host, port, family) for host, family in _LOCALHOST_TARGETS)
+
+
+def _host_port_free(host: str, port: int, family: socket.AddressFamily) -> bool:
+    with socket.socket(family, socket.SOCK_STREAM) as sock:
         sock.settimeout(0.2)
-        return sock.connect_ex(("127.0.0.1", port)) != 0
+        return sock.connect_ex((host, port)) != 0
 
 
 def _check(
