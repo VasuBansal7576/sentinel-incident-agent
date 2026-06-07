@@ -10,3 +10,13 @@ groups:
         annotations:
           summary: SENTINEL demo payment-service error rate is elevated
           description: Free-tier demo alert used by SENTINEL live connectivity checks.
+      - alert: SentinelSlowQueryLatency
+        expr: sentinel_slow_query_last_duration_seconds{service="payment-service"} > 0.02
+        for: 0m
+        labels:
+          severity: critical
+          service: payment-service
+          route: /slow-query
+        annotations:
+          summary: payment-service /slow-query latency spike from missing SQLite index
+          description: Credentialed live run alert from the real SQLite slow-query workload.

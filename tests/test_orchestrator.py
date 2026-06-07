@@ -690,6 +690,48 @@ def test_live_service_investigator_reports_do_not_emit_demo_constants(tmp_path):
     ]
 
 
+def test_live_slow_query_path_uses_groq_plan_and_service_investigators(tmp_path):
+    store = SQLiteInvestigationStore(tmp_path / "sentinel.db")
+    orchestrator = _live_orchestrator_with_environment(
+        store,
+        _SlowQueryLiveEnvironment(build_scenarios()["golden_path"]),
+    )
+    orchestrator.model_client = _GroqPlanner()
+
+    state = orchestrator.run_live_incident(
+        incident_id="LIVE-SLOW-TEST",
+        affected_services=["payment-service", "checkout-service"],
+        webhook_payload={
+            "source": "prometheus",
+            "commonLabels": {
+                "alertname": "SentinelSlowQueryLatency",
+                "service": "payment-service",
+                "route": "/slow-query",
+            },
+            "commonAnnotations": {
+                "summary": "payment-service /slow-query latency spike from missing SQLite index",
+            },
+        },
+        auto_approve=False,
+    )
+
+    assert state.status == InvestigationStatus.WAITING_FOR_APPROVAL
+    assert state.current_state.value == "response_proposal"
+    assert [report.service_name for report in state.service_reports] == [
+        "payment-service",
+        "checkout-service",
+    ]
+    assert any(call.tool_name == "infra.spawn_service_investigator" for call in state.tool_calls)
+    assert any(step.action == "Spawn payment-service Service Investigator" for step in state.plan_steps)
+    assert {plan["provider"] for plan in state.artifacts["model_tool_plans"]} == {"groq"}
+    assert all(plan["model_rationale"] for plan in state.artifacts["model_tool_plans"])
+    assert "evidence_collection" in [
+        event.payload["state"]
+        for event in state.audit_events
+        if event.event_type == "state_transition"
+    ]
+
+
 def test_live_incident_derives_provider_windows_from_webhook_timestamp(tmp_path):
     store = SQLiteInvestigationStore(tmp_path / "sentinel.db")
     orchestrator = _live_orchestrator_with_replay_tools(store)
@@ -939,6 +981,63 @@ class _LiveShapedReplayEnvironment(ReplayIncidentEnvironment):
             }
         ]
         return data
+
+
+class _SlowQueryLiveEnvironment(_LiveShapedReplayEnvironment):
+    def invoke(self, contract, payload):
+        data = super().invoke(contract, payload)
+        if contract.name == "observe.query_metrics_range":
+            data["provider"] = "prometheus"
+            data["prometheus"] = {
+                "result": [
+                    {
+                        "metric": {"service": payload.get("service", "payment-service")},
+                        "value": [1710000000, "0.145"],
+                    }
+                ]
+            }
+        elif contract.name in {
+            "observe.fetch_service_logs",
+            "observe.check_db_slow_queries",
+            "observe.get_distributed_traces",
+            "observe.fetch_apm_data",
+        }:
+            data["provider"] = "loki"
+            data["events"] = [
+                {
+                    "message": (
+                        "slow_query SELECT * FROM orders WHERE user_id = ? "
+                        "used sequential scan; missing_index orders.user_id"
+                    )
+                }
+            ]
+        elif contract.name == "comms.create_incident_channel":
+            data["provider"] = "discord"
+            data["channel"] = {"id": "discord-webhook", "name": payload.get("channel_name")}
+        elif contract.name == "comms.post_to_slack":
+            data["provider"] = "discord"
+            data["content"] = payload.get("message", "SENTINEL live test message")
+        return data
+
+
+class _GroqPlanner:
+    def __init__(self):
+        self.last_decision = {}
+
+    def plan_tools(self, *, state, available_contracts, objective, all_contracts=None):
+        selected = [contract.name for contract in available_contracts[:3]]
+        self.last_decision = {
+            "source": "model",
+            "provider": "groq",
+            "model": "llama-3.3-70b-versatile",
+            "endpoint": "https://api.groq.com/openai/v1/responses",
+            "current_state": state.current_state.value,
+            "objective": objective,
+            "eligible_tool_count": len(available_contracts),
+            "selected_tools": selected,
+            "model_rationale": "Use the live slow-query evidence path and keep remediation approval gated.",
+        }
+        return selected
 
 
 class _RecordingLiveEnvironment(_LiveShapedReplayEnvironment):

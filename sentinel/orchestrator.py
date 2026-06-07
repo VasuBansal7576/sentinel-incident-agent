@@ -558,142 +558,147 @@ class SentinelOrchestrator:
         *,
         auto_approve: bool,
     ) -> InvestigationState:
-        self._transition(state, StateName.RECEIVED)
-        self._tool_step(
-            state,
-            1,
-            "Create incident channel",
-            "comms.create_incident_channel",
-            {
-                "service": primary_service,
-                "channel_name": f"inc-{state.incident_id}-{primary_service}",
-            },
-        )
-        self._tool_step(
-            state,
-            2,
-            "Post investigation acknowledgement",
-            "comms.post_to_slack",
-            self._comms_payload(
-                state,
-                primary_service,
-                {"message": "SENTINEL is investigating a real /slow-query latency alert."},
-            ),
-        )
-        self._tool_step(
-            state,
-            3,
-            "Fetch generic webhook approver context",
-            "comms.page_oncall_engineer",
-            self._comms_payload(
-                state,
-                primary_service,
-                {"incident_id": state.incident_id},
-            ),
-        )
+        action_labels = {
+            "comms.create_incident_channel": "Create incident channel",
+            "comms.post_to_slack": "Post investigation acknowledgement",
+            "comms.page_oncall_engineer": "Fetch generic webhook approver context",
+            "observe.fetch_service_logs": "Read real Loki application logs",
+            "observe.query_metrics_range": "Read real Prometheus latency metric",
+            "observe.check_db_slow_queries": "Confirm slow SQLite query evidence",
+            "observe.fetch_alerting_rules": "Read real Prometheus alerting rules",
+            "observe.read_dashboard_snapshot": "Read real Prometheus target health",
+            "observe.get_error_rate_timeseries": "Check real Prometheus error rate",
+            "observe.read_queue_depth": "Check real Prometheus queue depth",
+            "observe.get_network_latency": "Check real Prometheus network latency",
+            "observe.check_uptime_history": "Check real Prometheus uptime history",
+            "observe.get_memory_cpu_usage": "Check real Prometheus CPU and memory",
+            "observe.get_distributed_traces": "Read real Loki trace-shaped events",
+            "observe.fetch_apm_data": "Read real Loki APM span evidence",
+        }
 
-        self._transition(state, StateName.TRIAGE)
-        logs = self._invoke_tool(
-            state,
-            "observe.fetch_service_logs",
-            observability_payload(state, primary_service),
-        )
-        self._add_step(
-            state,
-            4,
-            "Read real Loki application logs",
-            _tool_step_detail(logs),
-            tool_name="observe.fetch_service_logs",
-        )
-        metrics = self._invoke_tool(
-            state,
-            "observe.query_metrics_range",
-            self._slow_query_metric_payload(state, primary_service),
-        )
-        self._add_step(
-            state,
-            5,
-            "Read real Prometheus latency metric",
-            _tool_step_detail(metrics),
-            tool_name="observe.query_metrics_range",
-        )
-        db_logs = self._invoke_tool(
-            state,
-            "observe.check_db_slow_queries",
-            observability_payload(state, primary_service),
-        )
-        self._add_step(
-            state,
-            6,
-            "Confirm slow SQLite query evidence",
-            _tool_step_detail(db_logs),
-            tool_name="observe.check_db_slow_queries",
-        )
-
-        next_step = 7
-        for tool_name, action, payload in [
-            (
-                "observe.fetch_alerting_rules",
-                "Read real Prometheus alerting rules",
-                observability_payload(state, primary_service),
-            ),
-            (
-                "observe.read_dashboard_snapshot",
-                "Read real Prometheus target health",
-                {
+        def payload_for(tool_name: str) -> dict[str, Any]:
+            if tool_name == "comms.create_incident_channel":
+                return {
+                    "service": primary_service,
+                    "channel_name": f"inc-{state.incident_id}-{primary_service}",
+                }
+            if tool_name == "comms.post_to_slack":
+                return self._comms_payload(
+                    state,
+                    primary_service,
+                    {"message": "SENTINEL is investigating a real /slow-query latency alert."},
+                )
+            if tool_name == "comms.page_oncall_engineer":
+                return self._comms_payload(
+                    state,
+                    primary_service,
+                    {"incident_id": state.incident_id},
+                )
+            if tool_name == "observe.query_metrics_range":
+                return self._slow_query_metric_payload(state, primary_service)
+            if tool_name == "observe.read_dashboard_snapshot":
+                return {
                     **observability_payload(state, primary_service),
                     "dashboard_id": "prometheus-targets",
-                },
-            ),
-            (
-                "observe.get_error_rate_timeseries",
-                "Check real Prometheus error rate",
-                observability_payload(state, primary_service),
-            ),
-            (
-                "observe.read_queue_depth",
-                "Check real Prometheus queue depth",
-                observability_payload(state, primary_service),
-            ),
-            (
-                "observe.get_network_latency",
-                "Check real Prometheus network latency",
-                observability_payload(state, primary_service),
-            ),
-            (
-                "observe.check_uptime_history",
-                "Check real Prometheus uptime history",
-                observability_payload(state, primary_service),
-            ),
-            (
-                "observe.get_memory_cpu_usage",
-                "Check real Prometheus CPU and memory",
-                observability_payload(state, primary_service),
-            ),
-            (
-                "observe.get_distributed_traces",
-                "Read real Loki trace-shaped events",
-                observability_payload(state, primary_service),
-            ),
-            (
-                "observe.fetch_apm_data",
-                "Read real Loki APM span evidence",
-                observability_payload(state, primary_service),
-            ),
-        ]:
-            result = self._invoke_tool(state, tool_name, payload)
+                }
+            return observability_payload(state, primary_service)
+
+        self._transition(state, StateName.RECEIVED)
+        next_step = 1
+        for tool_name in self._model_ordered_required_tools(
+            state,
+            "Acknowledge the real slow-query alert and find the authorized approver",
+            [
+                "comms.create_incident_channel",
+                "comms.post_to_slack",
+                "comms.page_oncall_engineer",
+            ],
+        ):
+            result = self._invoke_tool(state, tool_name, payload_for(tool_name))
             self._add_step(
                 state,
                 next_step,
-                action,
+                action_labels[tool_name],
                 _tool_step_detail(result),
                 tool_name=tool_name,
             )
             next_step += 1
 
+        self._transition(state, StateName.TRIAGE)
+        triage_results = {}
+        for tool_name in self._model_ordered_required_tools(
+            state,
+            "Triage real slow-query symptoms from live logs, metrics, and database evidence",
+            [
+                "observe.fetch_service_logs",
+                "observe.query_metrics_range",
+                "observe.check_db_slow_queries",
+            ],
+        ):
+            result = self._invoke_tool(state, tool_name, payload_for(tool_name))
+            triage_results[tool_name] = result
+            self._add_step(
+                state,
+                next_step,
+                action_labels[tool_name],
+                _tool_step_detail(result),
+                tool_name=tool_name,
+            )
+            next_step += 1
+
+        logs = triage_results["observe.fetch_service_logs"]
+        metrics = triage_results["observe.query_metrics_range"]
+        db_logs = triage_results["observe.check_db_slow_queries"]
+
+        self._transition(state, StateName.EVIDENCE_COLLECTION)
+        for tool_name in self._model_ordered_required_tools(
+            state,
+            "Collect broader live evidence to rule out adjacent causes before remediation",
+            [
+                "observe.fetch_alerting_rules",
+                "observe.read_dashboard_snapshot",
+                "observe.get_error_rate_timeseries",
+                "observe.read_queue_depth",
+                "observe.get_network_latency",
+                "observe.check_uptime_history",
+                "observe.get_memory_cpu_usage",
+                "observe.get_distributed_traces",
+                "observe.fetch_apm_data",
+            ],
+        ):
+            result = self._invoke_tool(state, tool_name, payload_for(tool_name))
+            self._add_step(
+                state,
+                next_step,
+                action_labels[tool_name],
+                _tool_step_detail(result),
+                tool_name=tool_name,
+            )
+            next_step += 1
+
+        self._transition(state, StateName.SERVICE_INVESTIGATION)
+        if self._should_spawn_service_investigators(state):
+            service_reports = [
+                report
+                for service in state.affected_services
+                if (report := self._spawn_service_investigator(state, service)) is not None
+            ]
+        else:
+            service_reports = []
+        state.service_reports = service_reports
+        for report in service_reports:
+            self._add_step(
+                state,
+                next_step,
+                f"Spawn {report.service_name} Service Investigator",
+                "Isolated read-only context returned a typed report.",
+            )
+            next_step += 1
+        self._checkpoint(state)
+
         state.diagnosis = self._derive_slow_query_diagnosis(state, logs, metrics, db_logs)
         self._transition(state, StateName.CORRELATION)
-        self._add_step(state, next_step, "Correlate Prometheus and Loki evidence", state.diagnosis.summary)
+        self._add_step(state, next_step, "Correlate Prometheus, Loki, and service findings", state.diagnosis.summary)
         next_step += 1
         if state.diagnosis.confidence == ConfidenceLevel.INSUFFICIENT:
             return self._finish_insufficient_confidence(
@@ -889,6 +894,17 @@ class SentinelOrchestrator:
             state.artifacts.setdefault("model_tool_plans", []).append(trace)
             self._audit(state, "model_tool_plan", trace)
         return planned
+
+    def _model_ordered_required_tools(
+        self,
+        state: InvestigationState,
+        objective: str,
+        required_tools: list[str],
+    ) -> list[str]:
+        planned = self._plan(state, objective)
+        required = list(dict.fromkeys(required_tools))
+        model_ordered = [name for name in planned if name in required]
+        return model_ordered + [name for name in required if name not in model_ordered]
 
     def _tool_step(
         self,

@@ -77,12 +77,15 @@ def verify_log(path: Path) -> dict[str, Any]:
         "posted": bool(webhook_payload.get("incident_id")),
         "incident_id": webhook_payload.get("incident_id"),
         "affected_services": _affected_services(webhook_payload.get("payload")),
+        "workload_proof": _workload_proof(webhook_payload.get("payload")),
     }
+    generated_slow_query_payload = _payload_source(webhook_payload.get("payload")) == "prometheus_manual_generic_webhook"
     logged_summary_passed = logged_summary.get("passed") is True
     passed = (
         credential_check["passed"]
         and webhook_check["posted"]
         and len(webhook_check["affected_services"]) >= 2
+        and (not generated_slow_query_payload or webhook_check["workload_proof"]["passed"])
         and checkpoint_recovered
         and approval_ok
         and reconstructed["passed"]
@@ -204,6 +207,39 @@ def _affected_services(payload: Any) -> list[str]:
     if isinstance(value, str) and value.strip():
         return [value.strip()]
     return []
+
+
+def _payload_source(payload: Any) -> str | None:
+    if not isinstance(payload, dict):
+        return None
+    source = payload.get("source")
+    return source.strip() if isinstance(source, str) and source.strip() else None
+
+
+def _workload_proof(payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {"passed": False, "reason": "missing payload"}
+    proof = payload.get("live_workload_proof")
+    if not isinstance(proof, dict):
+        return {"passed": False, "reason": "missing live_workload_proof"}
+    requests = proof.get("requests")
+    errors = proof.get("errors")
+    sample = proof.get("prometheus_value_seconds")
+    passed = (
+        isinstance(requests, int)
+        and requests > 0
+        and isinstance(errors, int)
+        and errors >= 0
+        and isinstance(sample, (int, float))
+        and sample > 0
+    )
+    return {
+        "passed": passed,
+        "requests": requests,
+        "errors": errors,
+        "prometheus_value_seconds": sample,
+        "prometheus_alert_found": proof.get("prometheus_alert_found"),
+    }
 
 
 if __name__ == "__main__":

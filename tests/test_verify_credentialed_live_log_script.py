@@ -51,12 +51,24 @@ def test_verify_credentialed_live_log_rejects_single_service_payload(tmp_path):
     assert summary["webhook"]["affected_services"] == ["checkout-service"]
 
 
+def test_verify_credentialed_live_log_rejects_generated_payload_without_workload_proof(tmp_path):
+    log_path = tmp_path / "live-run.log"
+    log_path.write_text(_live_log_text(generated_payload=True, include_workload_proof=False))
+
+    summary = verify.verify_log(log_path)
+
+    assert summary["passed"] is False
+    assert summary["webhook"]["workload_proof"]["passed"] is False
+
+
 def _live_log_text(
     *,
     checkpoint_process_restarted: bool = True,
     before_process: dict | None = None,
     after_process: dict | None = None,
     affected_services: list[str] | None = None,
+    generated_payload: bool = False,
+    include_workload_proof: bool = True,
 ) -> str:
     before_process = before_process or {"pid": 10, "started_at": "2026-06-07T07:00:00+00:00"}
     after_process = after_process or {"pid": 20, "started_at": "2026-06-07T07:01:00+00:00"}
@@ -89,10 +101,11 @@ def _live_log_text(
             "posting_real_generic_webhook",
             {
                 "incident_id": "LIVE-1",
-                "payload": {
-                    "incident_id": "LIVE-1",
-                    "affected_services": affected_services,
-                },
+                "payload": _webhook_payload(
+                    affected_services,
+                    generated=generated_payload,
+                    include_workload_proof=include_workload_proof,
+                ),
             },
         ),
         (
@@ -131,6 +144,28 @@ def _live_log_text(
         ("verification_summary", {"passed": True}),
     ]
     return "".join(_section(name, payload) for name, payload in sections)
+
+
+def _webhook_payload(
+    affected_services: list[str],
+    *,
+    generated: bool,
+    include_workload_proof: bool,
+) -> dict:
+    payload = {
+        "incident_id": "LIVE-1",
+        "affected_services": affected_services,
+    }
+    if generated:
+        payload["source"] = "prometheus_manual_generic_webhook"
+    if include_workload_proof:
+        payload["live_workload_proof"] = {
+            "requests": 12,
+            "errors": 0,
+            "prometheus_value_seconds": 0.132,
+            "prometheus_alert_found": True,
+        }
+    return payload
 
 
 def _section(name: str, payload: dict) -> str:

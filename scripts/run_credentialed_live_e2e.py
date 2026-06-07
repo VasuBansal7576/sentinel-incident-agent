@@ -41,6 +41,11 @@ def main() -> None:
     parser.add_argument("--skip-compose", action="store_true", help="Use an already running receiver.")
     parser.add_argument("--compose-project", default="sentinel-live")
     parser.add_argument("--log-path", default=None)
+    parser.add_argument("--host-prometheus-url", default=os.getenv("SENTINEL_HOST_PROMETHEUS_URL", "http://localhost:9090"))
+    parser.add_argument("--slow-query-row-count", type=int, default=180_000)
+    parser.add_argument("--slow-query-load-seconds", type=int, default=25)
+    parser.add_argument("--slow-query-min-requests", type=int, default=12)
+    parser.add_argument("--slow-query-alert-wait-seconds", type=int, default=45)
     parser.add_argument(
         "--checkpoint-backend",
         choices=("sqlite", "postgres"),
@@ -80,7 +85,7 @@ def main() -> None:
             _run_compose(["up", "-d", "--build", "postgres", "redis", "prometheus", "loki", "sentinel"], env_file, args, log)
         _wait_receiver_ready(args.base_url, env["SENTINEL_API_TOKEN"], args.poll_seconds, log)
 
-        payload = _load_or_prompt_payload(args.payload_file)
+        payload = _load_or_prompt_payload(args, log)
         incident_id = _payload_incident_id(payload)
         if not incident_id:
             raise SystemExit("The live payload must include incident_id, alert_id, id, or fingerprint.")
@@ -348,11 +353,17 @@ def _quote_env(value: str) -> str:
     return value
 
 
-def _load_or_prompt_payload(payload_file: str | None) -> dict[str, Any]:
-    if payload_file:
-        return json.loads(Path(payload_file).read_text())
+def _load_or_prompt_payload(args: argparse.Namespace, log: "_LiveLog") -> dict[str, Any]:
+    if args.payload_file:
+        payload = json.loads(Path(args.payload_file).read_text())
+        if not isinstance(payload, dict):
+            raise SystemExit("Webhook payload file must contain a JSON object.")
+        return payload
     print("Paste a real generic webhook JSON payload, then press Enter on a blank line.")
-    print("Or press Enter immediately to build one from incident details you type next.")
+    print(
+        "Or press Enter immediately to trigger the local real /slow-query workload, "
+        "wait for Prometheus evidence, and build the webhook payload from that run."
+    )
     lines: list[str] = []
     while True:
         line = input()
@@ -364,36 +375,213 @@ def _load_or_prompt_payload(payload_file: str | None) -> dict[str, Any]:
         if not isinstance(payload, dict):
             raise SystemExit("Webhook payload must be a JSON object.")
         return payload
-    incident_id = _prompt_text("REAL_INCIDENT_ID", required=True, default=f"LIVE-{int(time.time())}")
-    services_raw = _prompt_text("AFFECTED_SERVICES comma-separated, use 2+ for subagents", required=True, default="payment-service,checkout-service")
+    return _build_real_slow_query_payload(args, log)
+
+
+def _build_real_slow_query_payload(args: argparse.Namespace, log: "_LiveLog") -> dict[str, Any]:
+    print("Building a real local /slow-query incident payload.")
+    print("This resets the live SQLite workload, sends real HTTP requests, and waits for Prometheus to scrape it.")
+    incident_id = _prompt_text("REAL_INCIDENT_ID", required=True, default=f"LIVE-SLOW-{int(time.time())}")
+    services = _prompt_services()
+    evidence_note = _prompt_text(
+        "REAL_EVIDENCE_NOTE",
+        required=True,
+        default="local /slow-query traffic produced Prometheus and Loki evidence",
+    )
+    workload = _prepare_slow_query_workload(args, log)
+    occurred_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    return _generic_slow_query_payload(
+        incident_id=incident_id,
+        services=services,
+        occurred_at=occurred_at,
+        evidence_note=evidence_note,
+        workload=workload,
+    )
+
+
+def _prompt_services() -> list[str]:
+    services_raw = _prompt_text(
+        "AFFECTED_SERVICES comma-separated, must include 2+ for subagent proof",
+        required=True,
+        default="payment-service,checkout-service",
+    )
     services = [item.strip() for item in services_raw.split(",") if item.strip()]
     if len(services) < 2:
-        print("Warning: fewer than two services means the parent will not spawn service investigators.")
-    summary = _prompt_text("REAL_ALERT_SUMMARY", required=True, default=f"{services[0]} production regression")
-    occurred_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        raise SystemExit("The credentialed video run requires 2+ affected services so the subagent path is real.")
+    return services
+
+
+def _prepare_slow_query_workload(args: argparse.Namespace, log: "_LiveLog") -> dict[str, Any]:
+    base_url = args.base_url.rstrip("/")
+    prometheus_url = args.host_prometheus_url.rstrip("/")
+    durations: list[float] = []
+    errors = 0
+    with httpx.Client(timeout=30.0) as client:
+        reset = client.post(
+            f"{base_url}/slow-query/reset",
+            params={"row_count": args.slow_query_row_count},
+        )
+        reset_body = _response_body(reset)
+        log.section("slow_query_reset")
+        log.json({"code": reset.status_code, "body": reset_body})
+        reset.raise_for_status()
+
+        deadline = time.monotonic() + args.slow_query_load_seconds
+        request_count = 0
+        while time.monotonic() < deadline or request_count < args.slow_query_min_requests:
+            try:
+                response = client.get(f"{base_url}/slow-query")
+                body = _response_body(response)
+                if response.status_code >= 400:
+                    errors += 1
+                elif isinstance(body, dict):
+                    duration = body.get("duration_ms")
+                    if isinstance(duration, (int, float)):
+                        durations.append(float(duration))
+                response.raise_for_status()
+            except Exception:
+                errors += 1
+            request_count += 1
+            time.sleep(0.08)
+
+    prometheus_sample = _wait_for_prometheus_sample(
+        prometheus_url,
+        service="payment-service",
+        timeout_seconds=max(20, args.slow_query_alert_wait_seconds),
+    )
+    prometheus_alert = _wait_for_prometheus_alert(
+        prometheus_url,
+        timeout_seconds=args.slow_query_alert_wait_seconds,
+    )
+    workload = {
+        "requests": request_count,
+        "errors": errors,
+        "max_duration_ms": max(durations) if durations else None,
+        "last_duration_ms": durations[-1] if durations else None,
+        "prometheus_sample": prometheus_sample,
+        "prometheus_alert": prometheus_alert,
+    }
+    log.section("slow_query_workload_proof")
+    log.json(workload)
+    if not durations:
+        raise RuntimeError("The live /slow-query workload produced no successful request durations.")
+    if not isinstance(prometheus_sample.get("value_seconds"), (int, float)) or prometheus_sample["value_seconds"] <= 0:
+        raise RuntimeError("Prometheus did not return a positive live /slow-query sample.")
+    return workload
+
+
+def _wait_for_prometheus_sample(prometheus_url: str, *, service: str, timeout_seconds: int) -> dict[str, Any]:
+    query = f'sentinel_slow_query_last_duration_seconds{{service="{service}"}}'
+    deadline = time.monotonic() + timeout_seconds
+    latest: dict[str, Any] = {}
+    while time.monotonic() < deadline:
+        latest = _prometheus_query(prometheus_url, query)
+        value = _latest_prometheus_sample(latest)
+        if value is not None and value > 0:
+            return {"query": query, "value_seconds": value, "response": latest}
+        time.sleep(2)
+    return {"query": query, "value_seconds": None, "response": latest}
+
+
+def _wait_for_prometheus_alert(prometheus_url: str, *, timeout_seconds: int) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout_seconds
+    latest: dict[str, Any] = {}
+    while time.monotonic() < deadline:
+        try:
+            response = httpx.get(f"{prometheus_url}/api/v1/alerts", timeout=10.0)
+            response.raise_for_status()
+            latest = response.json()
+        except Exception as exc:
+            latest = {"error": str(exc)}
+        for alert in latest.get("data", {}).get("alerts", []) if isinstance(latest.get("data"), dict) else []:
+            labels = alert.get("labels") if isinstance(alert, dict) else {}
+            if (
+                isinstance(labels, dict)
+                and labels.get("alertname") == "SentinelSlowQueryLatency"
+                and alert.get("state") in {"firing", "pending"}
+            ):
+                return {"found": True, "alert": alert, "response": latest}
+        time.sleep(2)
+    return {"found": False, "response": latest}
+
+
+def _prometheus_query(prometheus_url: str, query: str) -> dict[str, Any]:
+    response = httpx.get(
+        f"{prometheus_url}/api/v1/query",
+        params={"query": query},
+        timeout=10.0,
+    )
+    response.raise_for_status()
+    body = response.json()
+    if not isinstance(body, dict):
+        raise RuntimeError("Prometheus query did not return a JSON object.")
+    return body
+
+
+def _latest_prometheus_sample(response: dict[str, Any]) -> float | None:
+    data = response.get("data")
+    result = data.get("result") if isinstance(data, dict) else None
+    if not isinstance(result, list):
+        return None
+    latest: tuple[float, float] | None = None
+    for item in result:
+        if not isinstance(item, dict):
+            continue
+        value = item.get("value")
+        if not isinstance(value, list) or len(value) < 2:
+            continue
+        try:
+            timestamp = float(value[0])
+            sample = float(value[1])
+        except (TypeError, ValueError):
+            continue
+        if latest is None or timestamp >= latest[0]:
+            latest = (timestamp, sample)
+    return latest[1] if latest else None
+
+
+def _generic_slow_query_payload(
+    *,
+    incident_id: str,
+    services: list[str],
+    occurred_at: str,
+    evidence_note: str,
+    workload: dict[str, Any],
+) -> dict[str, Any]:
+    alert = workload.get("prometheus_alert", {}).get("alert")
+    labels = dict(alert.get("labels") or {}) if isinstance(alert, dict) else {}
+    labels.setdefault("alertname", "SentinelSlowQueryLatency")
+    labels.setdefault("severity", "critical")
+    labels.setdefault("service", services[0])
+    labels.setdefault("route", "/slow-query")
+    annotations = dict(alert.get("annotations") or {}) if isinstance(alert, dict) else {}
+    annotations.setdefault("summary", f"{services[0]} /slow-query latency spike from missing SQLite index")
+    annotations.setdefault("description", evidence_note)
     return {
         "receiver": "sentinel",
-        "source": "manual_real_payload",
+        "source": "prometheus_manual_generic_webhook",
         "status": "firing",
         "incident_id": incident_id,
         "affected_services": services,
-        "commonLabels": {
-            "alertname": "SentinelManualLiveIncident",
-            "severity": "critical",
-            "service": services[0],
+        "groupKey": f'{{alertname="SentinelSlowQueryLatency", service="{services[0]}"}}',
+        "groupLabels": {"alertname": "SentinelSlowQueryLatency", "service": services[0]},
+        "commonLabels": labels,
+        "commonAnnotations": annotations,
+        "live_workload_proof": {
+            "requests": workload.get("requests"),
+            "errors": workload.get("errors"),
+            "max_duration_ms": workload.get("max_duration_ms"),
+            "last_duration_ms": workload.get("last_duration_ms"),
+            "prometheus_value_seconds": workload.get("prometheus_sample", {}).get("value_seconds"),
+            "prometheus_alert_found": workload.get("prometheus_alert", {}).get("found"),
         },
-        "commonAnnotations": {"summary": summary},
         "alerts": [
             {
                 "status": "firing",
                 "fingerprint": incident_id,
                 "startsAt": occurred_at,
-                "labels": {
-                    "alertname": "SentinelManualLiveIncident",
-                    "severity": "critical",
-                    "service": service,
-                },
-                "annotations": {"summary": summary},
+                "labels": {**labels, "service": service},
+                "annotations": annotations,
             }
             for service in services
         ],

@@ -141,6 +141,43 @@ def test_credentialed_live_runner_detects_receiver_process_identity_change():
     )
 
 
+def test_credentialed_live_runner_builds_slow_query_payload_with_workload_proof():
+    payload = live_e2e._generic_slow_query_payload(
+        incident_id="LIVE-SLOW-1",
+        services=["payment-service", "checkout-service"],
+        occurred_at="2026-06-07T08:00:00Z",
+        evidence_note="real slow-query traffic generated this alert",
+        workload={
+            "requests": 12,
+            "errors": 0,
+            "max_duration_ms": 145.0,
+            "last_duration_ms": 132.0,
+            "prometheus_sample": {"value_seconds": 0.132},
+            "prometheus_alert": {"found": True},
+        },
+    )
+
+    assert payload["source"] == "prometheus_manual_generic_webhook"
+    assert payload["commonLabels"]["alertname"] == "SentinelSlowQueryLatency"
+    assert payload["affected_services"] == ["payment-service", "checkout-service"]
+    assert payload["live_workload_proof"]["requests"] == 12
+    assert payload["live_workload_proof"]["prometheus_value_seconds"] == 0.132
+    assert len(payload["alerts"]) == 2
+
+
+def test_credentialed_live_runner_reads_latest_prometheus_sample():
+    response = {
+        "data": {
+            "result": [
+                {"value": [1710000000, "0.12"]},
+                {"value": [1710000001, "0.34"]},
+            ]
+        }
+    }
+
+    assert live_e2e._latest_prometheus_sample(response) == 0.34
+
+
 def _completed_status(*, tool_calls: int, rationale: str = "Groq selected metrics, logs, and repo tools.") -> dict:
     model_plan = {
         "source": "model",
