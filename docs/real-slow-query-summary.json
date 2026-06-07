@@ -2,14 +2,16 @@
   "passed": true,
   "status": "completed",
   "current_state": "post_mortem",
-  "tool_calls": 22,
+  "tool_calls": 34,
   "tool_call_names": [
+    "comms.page_oncall_engineer",
     "comms.create_incident_channel",
     "comms.post_to_slack",
-    "comms.page_oncall_engineer",
+    "observe.check_db_slow_queries",
     "observe.fetch_service_logs",
     "observe.query_metrics_range",
-    "observe.check_db_slow_queries",
+    "observe.get_distributed_traces",
+    "observe.fetch_apm_data",
     "observe.fetch_alerting_rules",
     "observe.read_dashboard_snapshot",
     "observe.get_error_rate_timeseries",
@@ -17,8 +19,18 @@
     "observe.get_network_latency",
     "observe.check_uptime_history",
     "observe.get_memory_cpu_usage",
-    "observe.get_distributed_traces",
-    "observe.fetch_apm_data",
+    "observe.fetch_service_logs",
+    "repo.get_recent_commits",
+    "repo.get_rollback_targets",
+    "infra.spawn_service_investigator",
+    "observe.fetch_service_logs",
+    "repo.get_recent_commits",
+    "repo.get_rollback_targets",
+    "infra.spawn_service_investigator",
+    "observe.fetch_service_logs",
+    "repo.get_recent_commits",
+    "repo.get_rollback_targets",
+    "infra.spawn_service_investigator",
     "comms.post_to_slack",
     "infra.add_database_index",
     "observe.query_metrics_range",
@@ -27,41 +39,109 @@
     "comms.update_runbook",
     "comms.post_to_slack"
   ],
-  "diagnosis": "Real /slow-query incident: Prometheus recorded 161.6ms latency and Loki logs show SELECT * FROM orders WHERE user_id = ? using a sequential scan because orders.user_id has no index. Root cause: missing SQLite index orders.user_id.",
+  "diagnosis": "Real /slow-query incident: Prometheus recorded 115.2ms latency and Loki logs show SELECT * FROM orders WHERE user_id = ? using a sequential scan because orders.user_id has no index. Root cause: missing SQLite index orders.user_id.",
   "recommendation": "add_index orders.user_id",
   "remediation_result": {
     "action": "add_database_index",
     "affected_service": "payment-service",
-    "status": "executed",
-    "idempotency_key": "inv-032e37210d:remediation:add-index-payment-service",
     "evidence": [
       {
-        "source": "infra.add_database_index",
-        "time_window": "live",
         "affected_service": "payment-service",
         "claim": "infra.add_database_index returned live API data via sqlite for payment-service; observed 13 provider item(s).",
-        "provenance": "live::infra.add_database_index"
+        "provenance": "live::infra.add_database_index",
+        "source": "infra.add_database_index",
+        "time_window": "live"
       },
       {
-        "source": "observe.query_metrics_range",
-        "time_window": "now-30m",
         "affected_service": "payment-service",
         "claim": "observe.query_metrics_range returned live API data via prometheus for payment-service; observed 1 provider item(s).",
-        "provenance": "live::observe.query_metrics_range"
+        "provenance": "live::observe.query_metrics_range",
+        "source": "observe.query_metrics_range",
+        "time_window": "now-30m"
       }
     ],
-    "message": "Created idx_orders_user_id on orders(user_id); real Prometheus latency improved from 161.6ms to 3.3ms."
+    "idempotency_key": "inv-8830cfe9d3:remediation:add-index-payment-service",
+    "message": "Created idx_orders_user_id on orders(user_id); real Prometheus latency improved from 115.2ms to 1.2ms.",
+    "status": "executed"
   },
+  "checkpoint": {
+    "backend": "sqlite",
+    "process_restarted": true,
+    "recovered": true
+  },
+  "model_tool_plans": [
+    {
+      "current_state": "received",
+      "eligible_tool_count": 12,
+      "endpoint": "https://api.groq.com/openai/v1/responses",
+      "model": "llama-3.3-70b-versatile",
+      "model_rationale": "Notify stakeholders and page on-call engineer to acknowledge the slow-query alert and find the authorized approver",
+      "model_raw_text": "{\n  \"tools\": [\n      \"comms.notify_stakeholders\",\n      \"comms.page_oncall_engineer\"\n   ],\n   \"rationale\": \"Notify stakeholders and page on-call engineer to acknowledge the slow-query alert and find the authorized approver\"\n}",
+      "objective": "Acknowledge the real slow-query alert and find the authorized approver",
+      "provider": "groq",
+      "selected_tools": [
+        "comms.notify_stakeholders",
+        "comms.page_oncall_engineer"
+      ],
+      "source": "model"
+    },
+    {
+      "current_state": "triage",
+      "eligible_tool_count": 28,
+      "endpoint": "https://api.groq.com/openai/v1/responses",
+      "model": "llama-3.3-70b-versatile",
+      "model_rationale": "To triage real slow-query symptoms from live logs, metrics, and database evidence, we need to investigate the database performance, service logs, and error rates.",
+      "model_raw_text": "{\n  \"tools\": [\n      \"observe.check_db_slow_queries\",\n      \"observe.fetch_service_logs\",\n      \"observe.get_error_rate_timeseries\"\n   ],\n   \"rationale\": \"To triage real slow-query symptoms from live logs, metrics, and database evidence, we need to investigate the database performance, service logs, and error rates.\"\n}",
+      "objective": "Triage real slow-query symptoms from live logs, metrics, and database evidence",
+      "provider": "groq",
+      "selected_tools": [
+        "observe.check_db_slow_queries",
+        "observe.fetch_service_logs",
+        "observe.get_error_rate_timeseries"
+      ],
+      "source": "model"
+    },
+    {
+      "current_state": "evidence_collection",
+      "eligible_tool_count": 28,
+      "endpoint": "https://api.groq.com/openai/v1/responses",
+      "fallback_reason": "HTTPStatusError",
+      "model": "llama-3.3-70b-versatile",
+      "objective": "Collect broader live evidence to rule out adjacent causes before remediation",
+      "provider": "groq",
+      "selected_tools": [
+        "observe.fetch_service_logs",
+        "observe.fetch_service_logs",
+        "observe.get_distributed_traces",
+        "observe.check_db_slow_queries",
+        "observe.fetch_apm_data",
+        "repo.diff_pull_request",
+        "repo.fetch_pr_metadata",
+        "repo.fetch_test_results",
+        "repo.blame_file_line",
+        "repo.get_feature_flags"
+      ],
+      "source": "deterministic_fallback"
+    }
+  ],
   "live_provider_proofs": {
-    "prometheus": 9,
-    "loki": 2,
     "datadog": 0,
-    "github": 0,
-    "generic_webhook": 1,
-    "pagerduty": 0,
     "discord": 4,
-    "slack": 0,
+    "generic_webhook": 1,
+    "github": 4,
     "kubernetes": 0,
+    "loki": 5,
+    "pagerduty": 0,
+    "prometheus": 9,
+    "slack": 0,
+    "sqlite": 1
+  },
+  "required_live_provider_proofs": {
+    "discord": 4,
+    "generic_webhook": 1,
+    "github": 4,
+    "loki": 5,
+    "prometheus": 9,
     "sqlite": 1
   },
   "live_tool_proofs": {
@@ -72,36 +152,246 @@
     "observe.check_db_slow_queries": 1,
     "observe.check_uptime_history": 1,
     "observe.fetch_alerting_rules": 1,
-    "observe.fetch_service_logs": 1,
+    "observe.fetch_apm_data": 1,
+    "observe.fetch_service_logs": 2,
+    "observe.get_distributed_traces": 1,
     "observe.get_error_rate_timeseries": 1,
     "observe.get_memory_cpu_usage": 1,
     "observe.get_network_latency": 1,
     "observe.query_metrics_range": 2,
     "observe.read_dashboard_snapshot": 1,
-    "observe.read_queue_depth": 1
+    "observe.read_queue_depth": 1,
+    "repo.get_recent_commits": 3,
+    "repo.get_rollback_targets": 1
+  },
+  "required_live_tool_proofs": {
+    "comms.page_oncall_engineer": 1,
+    "comms.post_to_slack": 3,
+    "infra.add_database_index": 1,
+    "observe.check_db_slow_queries": 1,
+    "observe.fetch_service_logs": 2,
+    "observe.query_metrics_range": 2,
+    "repo.get_recent_commits": 3
   },
   "load_stats": {
-    "requests": 120,
+    "requests": 121,
     "errors": 0,
-    "max_duration_ms": 304.004,
-    "last_duration_ms": 0.939
+    "max_duration_ms": 137.886,
+    "last_duration_ms": 115.207,
+    "prometheus_value_seconds": 0.116109
   },
   "prometheus_alert": {
     "labels": {
       "alertname": "SentinelSlowQueryLatency",
       "instance": "sentinel:8000",
-      "job": "sentinel-real",
+      "job": "sentinel",
       "route": "/slow-query",
       "service": "payment-service",
-      "severity": "page"
+      "severity": "critical"
     },
     "annotations": {
-      "description": "Real Prometheus alert from sentinel_slow_query_last_duration_seconds.",
+      "description": "Credentialed live run alert from the real SQLite slow-query workload.",
       "summary": "payment-service /slow-query latency spike from missing SQLite index"
     },
     "state": "firing",
-    "activeAt": "2026-06-07T08:24:53.790406478Z",
-    "value": "1.56997e-01"
+    "activeAt": "2026-06-07T10:14:11.556260173Z",
+    "value": "1.18198e-01"
   },
-  "last_discord_message": "payment-service /slow-query incident was caused by a real missing SQLite index on orders.user_id and mitigated by creating idx_orders_user_id.\nTimeline:\n- Generic Prometheus alert webhook received by SENTINEL.\n- SENTINEL read real Loki app logs for /slow-query slow-query events.\n- SENTINEL read real Prometheus latency: before fix 161.6ms.\n- SENTINEL checked Prometheus alerts, targets, errors, queue depth, RTT, uptime, CPU/memory, plus Loki trace/APM paths.\n- SENTINEL requested human approval for add_index orders.user_id.\n- Authorized approver approved the exact add-index request.\n- SENTINEL executed CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id).\n- SENTINEL verified real Prometheus latency after fix: 3.3ms.\n- SENTINEL posted the full incident timeline to Discord.\nFacts:\n- The app executed SELECT * FROM orders WHERE user_id = ? against SQLite.\n- Loki logs showed the query using a sequential scan while the index was missing.\n- Prometheus recorded /slow-query latency before fix: 161.6ms.\n- Additional Prometheus/Loki checks ruled out error-rate, queue, network, uptime, and resource saturation as primary causes.\n- Prometheus recorded /slow-query latency after fix: 3.3ms.\n- The approved remediation created idx_orders_user_id on orders(user_id).\nAction items: Keep idx_orders_user_id in the schema before enabling this query path."
+  "service_reports": [
+    {
+      "confidence": "high",
+      "conflicts": [],
+      "contributing_factors": [
+        "Recent live change evidence",
+        "Service-local telemetry symptoms"
+      ],
+      "estimated_user_impact": 0,
+      "evidence": [
+        {
+          "affected_service": "payment-service",
+          "claim": "observe.fetch_service_logs returned live API data via loki for payment-service; observed 25 provider item(s).",
+          "provenance": "live::observe.fetch_service_logs",
+          "source": "observe.fetch_service_logs",
+          "time_window": "now-30m"
+        },
+        {
+          "affected_service": "payment-service",
+          "claim": "repo.get_recent_commits returned live API data for payment-service; observed 1 provider item(s).",
+          "provenance": "live::repo.get_recent_commits",
+          "source": "repo.get_recent_commits",
+          "time_window": "now-6h"
+        },
+        {
+          "affected_service": "payment-service",
+          "claim": "repo.get_rollback_targets returned live API data for payment-service; observed 68 provider item(s).",
+          "provenance": "live::repo.get_rollback_targets",
+          "source": "repo.get_rollback_targets",
+          "time_window": "now-6h"
+        }
+      ],
+      "evidence_gaps": [],
+      "isolated_context_id": "ctx-a35863ec52",
+      "local_diagnosis": "payment-service live evidence is consistent with degradation around recent live deployment evidence; parent reconciliation must confirm cross-service cause.",
+      "rollback_target": "revision:21",
+      "scoped_tool_names": [
+        "observe.check_db_slow_queries",
+        "observe.check_pod_health",
+        "observe.check_uptime_history",
+        "observe.fetch_alerting_rules",
+        "observe.fetch_apm_data",
+        "observe.fetch_cdn_logs",
+        "observe.fetch_service_logs",
+        "observe.get_distributed_traces",
+        "observe.get_error_rate_timeseries",
+        "observe.get_memory_cpu_usage",
+        "observe.get_network_latency",
+        "observe.query_metrics_range",
+        "observe.read_dashboard_snapshot",
+        "observe.read_flame_graph",
+        "observe.read_queue_depth",
+        "repo.blame_file_line",
+        "repo.check_dependency_changes",
+        "repo.diff_pull_request",
+        "repo.fetch_pr_metadata",
+        "repo.fetch_test_results",
+        "repo.get_commit_author",
+        "repo.get_deploy_history",
+        "repo.get_feature_flags",
+        "repo.get_recent_commits",
+        "repo.get_rollback_targets",
+        "repo.read_changelog",
+        "repo.read_ci_pipeline_status",
+        "repo.read_deployment_config"
+      ],
+      "service_name": "payment-service",
+      "suggested_fix": "Propose rollback of payment-service to revision:21 after structured approval."
+    },
+    {
+      "confidence": "low",
+      "conflicts": [],
+      "contributing_factors": [
+        "Recent live change evidence",
+        "Service-local telemetry symptoms"
+      ],
+      "estimated_user_impact": 0,
+      "evidence": [
+        {
+          "affected_service": "checkout-service",
+          "claim": "observe.fetch_service_logs completed live API call via loki for checkout-service; no provider-confirming records were returned.",
+          "provenance": "live_empty::observe.fetch_service_logs",
+          "source": "observe.fetch_service_logs",
+          "time_window": "now-30m"
+        },
+        {
+          "affected_service": "checkout-service",
+          "claim": "repo.get_recent_commits returned live API data for checkout-service; observed 1 provider item(s).",
+          "provenance": "live::repo.get_recent_commits",
+          "source": "repo.get_recent_commits",
+          "time_window": "now-6h"
+        }
+      ],
+      "evidence_gaps": [
+        "kubectl failed: Error from server (NotFound): deployments.apps \"checkout-service\" not found"
+      ],
+      "isolated_context_id": "ctx-07acd0dc27",
+      "local_diagnosis": "checkout-service live evidence is consistent with degradation around recent live deployment evidence; parent reconciliation must confirm cross-service cause.",
+      "rollback_target": null,
+      "scoped_tool_names": [
+        "observe.check_db_slow_queries",
+        "observe.check_pod_health",
+        "observe.check_uptime_history",
+        "observe.fetch_alerting_rules",
+        "observe.fetch_apm_data",
+        "observe.fetch_cdn_logs",
+        "observe.fetch_service_logs",
+        "observe.get_distributed_traces",
+        "observe.get_error_rate_timeseries",
+        "observe.get_memory_cpu_usage",
+        "observe.get_network_latency",
+        "observe.query_metrics_range",
+        "observe.read_dashboard_snapshot",
+        "observe.read_flame_graph",
+        "observe.read_queue_depth",
+        "repo.blame_file_line",
+        "repo.check_dependency_changes",
+        "repo.diff_pull_request",
+        "repo.fetch_pr_metadata",
+        "repo.fetch_test_results",
+        "repo.get_commit_author",
+        "repo.get_deploy_history",
+        "repo.get_feature_flags",
+        "repo.get_recent_commits",
+        "repo.get_rollback_targets",
+        "repo.read_changelog",
+        "repo.read_ci_pipeline_status",
+        "repo.read_deployment_config"
+      ],
+      "service_name": "checkout-service",
+      "suggested_fix": "Collect a Kubernetes rollout revision target for checkout-service before approval."
+    },
+    {
+      "confidence": "low",
+      "conflicts": [],
+      "contributing_factors": [
+        "Recent live change evidence",
+        "Service-local telemetry symptoms"
+      ],
+      "estimated_user_impact": 0,
+      "evidence": [
+        {
+          "affected_service": "sentinel",
+          "claim": "observe.fetch_service_logs completed live API call via loki for sentinel; no provider-confirming records were returned.",
+          "provenance": "live_empty::observe.fetch_service_logs",
+          "source": "observe.fetch_service_logs",
+          "time_window": "now-30m"
+        },
+        {
+          "affected_service": "sentinel",
+          "claim": "repo.get_recent_commits returned live API data for sentinel; observed 1 provider item(s).",
+          "provenance": "live::repo.get_recent_commits",
+          "source": "repo.get_recent_commits",
+          "time_window": "now-6h"
+        }
+      ],
+      "evidence_gaps": [
+        "kubectl failed: Error from server (NotFound): deployments.apps \"sentinel\" not found"
+      ],
+      "isolated_context_id": "ctx-1ef88c83f3",
+      "local_diagnosis": "sentinel live evidence is consistent with degradation around recent live deployment evidence; parent reconciliation must confirm cross-service cause.",
+      "rollback_target": null,
+      "scoped_tool_names": [
+        "observe.check_db_slow_queries",
+        "observe.check_pod_health",
+        "observe.check_uptime_history",
+        "observe.fetch_alerting_rules",
+        "observe.fetch_apm_data",
+        "observe.fetch_cdn_logs",
+        "observe.fetch_service_logs",
+        "observe.get_distributed_traces",
+        "observe.get_error_rate_timeseries",
+        "observe.get_memory_cpu_usage",
+        "observe.get_network_latency",
+        "observe.query_metrics_range",
+        "observe.read_dashboard_snapshot",
+        "observe.read_flame_graph",
+        "observe.read_queue_depth",
+        "repo.blame_file_line",
+        "repo.check_dependency_changes",
+        "repo.diff_pull_request",
+        "repo.fetch_pr_metadata",
+        "repo.fetch_test_results",
+        "repo.get_commit_author",
+        "repo.get_deploy_history",
+        "repo.get_feature_flags",
+        "repo.get_recent_commits",
+        "repo.get_rollback_targets",
+        "repo.read_changelog",
+        "repo.read_ci_pipeline_status",
+        "repo.read_deployment_config"
+      ],
+      "service_name": "sentinel",
+      "suggested_fix": "Collect a Kubernetes rollout revision target for sentinel before approval."
+    }
+  ],
+  "last_discord_message": "payment-service /slow-query incident was caused by a real missing SQLite index on orders.user_id and mitigated by creating idx_orders_user_id.\nTimeline:\n- Generic Prometheus alert webhook received by SENTINEL.\n- SENTINEL read real Loki app logs for /slow-query slow-query events.\n- SENTINEL read real Prometheus latency: before fix 115.2ms.\n- SENTINEL checked Prometheus alerts, targets, errors, queue depth, RTT, uptime, CPU/memory, plus Loki trace/APM paths.\n- SENTINEL requested human approval for add_index orders.user_id.\n- Authorized approver approved the exact add-index request.\n- SENTINEL executed CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id).\n- SENTINEL verified real Prometheus latency after fix: 1.2ms.\n- SENTINEL posted the full incident timeline to Discord.\nFacts:\n- The app executed SELECT * FROM orders WHERE user_id = ? against SQLite.\n- Loki logs showed the query using a sequential scan while the index was missing.\n- Prometheus recorded /slow-query latency before fix: 115.2ms.\n- Additional Prometheus/Loki checks ruled out error-rate, queue, network, uptime, and resource saturation as primary causes.\n- Prometheus recorded /slow-query latency after fix: 1.2ms.\n- The approved remediation created idx_orders_user_id on orders(user_id).\nAction items: Keep idx_orders_user_id in the schema before enabling this query path."
 }

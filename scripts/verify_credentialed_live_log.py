@@ -53,7 +53,7 @@ def verify_log(path: Path) -> dict[str, Any]:
     approval_submitted = _last_payload(entries, "approval_submitted") or {}
     final_status = _last_status(entries)
     logged_summary = _last_payload(entries, "verification_summary") or {}
-    webhook_payload = _last_payload(entries, "posting_real_generic_webhook") or {}
+    webhook_payload = _last_payload_with_key(entries, "posting_real_generic_webhook", "payload") or {}
     workload_log = _last_payload(entries, "slow_query_workload_proof") or {}
 
     checkpoint_status = checkpoint_status_payload.get("status")
@@ -147,7 +147,7 @@ def _resolve_structured_log_path(path: Path) -> Path:
     if not path.exists():
         raise FileNotFoundError(path)
     text = path.read_text(errors="replace")
-    for line in text.splitlines()[:50]:
+    for line in text.splitlines():
         if not line.startswith("structured_log:"):
             continue
         raw = line.split(":", 1)[1].strip()
@@ -182,6 +182,17 @@ def _flush_section(entries: list[dict[str, Any]], section: str | None, text: str
 def _last_payload(entries: list[dict[str, Any]], section: str) -> dict[str, Any] | None:
     for entry in reversed(entries):
         if entry["section"] == section and isinstance(entry["payload"], dict):
+            return entry["payload"]
+    return None
+
+
+def _last_payload_with_key(entries: list[dict[str, Any]], section: str, key: str) -> dict[str, Any] | None:
+    for entry in reversed(entries):
+        if (
+            entry["section"] == section
+            and isinstance(entry["payload"], dict)
+            and key in entry["payload"]
+        ):
             return entry["payload"]
     return None
 

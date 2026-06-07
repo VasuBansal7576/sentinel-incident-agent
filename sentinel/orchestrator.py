@@ -1102,7 +1102,10 @@ class SentinelOrchestrator:
             if isinstance(providers, dict):
                 providers[tool_name] = provider.strip()
             if tool_name.startswith("comms."):
-                state.artifacts.setdefault("comms_provider", provider.strip())
+                if provider.strip() == "discord":
+                    state.artifacts["comms_provider"] = "discord"
+                else:
+                    state.artifacts.setdefault("comms_provider", provider.strip())
                 content = data.get("content")
                 if provider.strip() == "discord" and isinstance(content, str) and content.strip():
                     state.artifacts["last_discord_message"] = content.strip()

@@ -1,4 +1,4 @@
-SENTINEL is a production-shaped incident agent. The deterministic path proves 26-step long-horizon orchestration with 37 tool calls. The live path proves 22 real tool calls across Prometheus, Loki, SQLite, generic webhook, and Discord: metrics -> logs -> missing index diagnosis -> human approval -> idx_orders_user_id creation -> verified fix -> Discord timeline.
+SENTINEL is a production-shaped incident agent. The deterministic path proves 26-step long-horizon orchestration with 37 tool calls. The latest credentialed live path proves 34 real tool calls across Groq, GitHub, Prometheus, Loki, SQLite, generic webhook, and Discord: model tool planning -> metrics -> logs -> repo evidence -> subagents -> missing index diagnosis -> human approval -> idx_orders_user_id creation -> verified fix -> Discord timeline.
 
 # SENTINEL
 
@@ -7,7 +7,7 @@ SENTINEL is a self-hosted DevOps incident investigation agent for the first pain
 The submission has two proof paths:
 
 - **Deterministic path:** `python3 scripts/run_sentinel_demo.py` exercises the full 26-step state machine with 37 recorded tool calls, structured evidence, scoped subagents, approval, remediation, verification, and post-mortem output.
-- **Live path:** `python3 scripts/run_real_slow_query_incident.py --summary-output .sentinel/real-slow-query-summary.json` deploys SENTINEL, Prometheus, and Loki to a local kind cluster; generates real `/slow-query` latency; receives a real Prometheus alert payload; executes 22 recorded tool calls; reads real Prometheus and Loki evidence; requests approval; creates `idx_orders_user_id`; verifies latency improvement; and posts the full timeline to Discord.
+- **Credentialed live path:** `scripts/record_credentialed_live_e2e.sh` starts the local production-shaped stack; prompts for real Groq, GitHub, Discord, database, Redis, and API credentials; generates real `/slow-query` latency; receives a real generic Prometheus alert payload; executes 34 recorded tool calls; reads real Prometheus, Loki, GitHub, and SQLite evidence; restarts and resumes from a SQLite checkpoint; requests approval; creates `idx_orders_user_id`; verifies latency improvement; and posts the full timeline to Discord.
 
 ## Why This Exists
 
@@ -52,20 +52,22 @@ Set a real Discord webhook URL in `.env`:
 python3 scripts/configure_discord_webhook.py --from-stdin --test-post
 ```
 
-Then run:
+Then run the credentialed live proof:
 
 ```bash
-python3 scripts/run_real_slow_query_incident.py --summary-output .sentinel/real-slow-query-summary.json
+python3 scripts/preflight_credentialed_live_e2e.py
+scripts/record_credentialed_live_e2e.sh
 ```
 
-The live run creates a local kind cluster, deploys SENTINEL with Prometheus and Loki, drives load against `/slow-query`, waits for a real Prometheus alert, posts the alert to `/webhooks/generic`, waits for human approval, creates `idx_orders_user_id`, verifies the real latency drop, and posts the timeline to Discord.
+The live run starts the local Docker Compose stack, drives load against `/slow-query`, waits for a real Prometheus alert, posts the alert to `/webhooks/generic`, records Groq model tool plans, reads GitHub evidence, spawns service-investigator subagents, restarts the receiver to prove checkpoint recovery, waits for human approval, creates `idx_orders_user_id`, verifies the real latency drop, and posts the timeline to Discord.
 
 The last successful live proof showed:
 
-- Tool calls: `22`.
-- Prometheus latency before fix: `161.6ms`.
-- Prometheus latency after fix: `3.3ms`.
+- Tool calls: `34`.
+- Prometheus latency before fix: `115.2ms`.
+- Prometheus latency after fix: `1.2ms`.
 - Loki evidence: sequential scan on `SELECT * FROM orders WHERE user_id = ?`.
+- GitHub evidence: recent commits and rollback-target evidence from a live GitHub API call.
 - Prometheus checks: alerting rules, target health, error rate, queue depth, network RTT, uptime, CPU, and memory.
 - Approved remediation: `CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id)`.
 - Discord timeline: alert received, evidence read, approval received, index created, fix verified.
@@ -113,7 +115,7 @@ GET  /ready/live
 
 ## Additional Cloud Integrations
 
-The submission proof centers on Prometheus, Loki, kind, SQLite, and Discord because those can be demonstrated end-to-end with real local infrastructure and a free notification target. The codebase also contains additional integration surfaces for Datadog, PagerDuty, Slack, GitHub, OAuth token storage, Kubernetes rollback, and provider connectivity checks. Treat those as extension points unless they are run with real credentials in the target environment.
+The submission proof centers on Groq, GitHub, Prometheus, Loki, SQLite, generic webhooks, and Discord because those were demonstrated end-to-end with real credentials and local operational infrastructure. The codebase also contains additional integration surfaces for Datadog, PagerDuty, Slack, GitHub OAuth, Kubernetes rollback, OAuth token storage, and provider connectivity checks. Treat those as extension points unless they are run with real credentials in the target environment.
 
 ## Tests
 

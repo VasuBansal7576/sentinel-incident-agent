@@ -25,6 +25,10 @@ def test_public_proof_docs_satisfy_problem_md_requirements():
 
     assert "37 tool calls" in public_proof
     assert "35 tool calls" not in public_proof
+    assert "34 real tool calls" in public_proof
+    assert "22 real tool calls" not in public_proof
+    assert "161.6ms" not in public_proof
+    assert "3.3ms" not in public_proof
     assert "52-tool registry" in public_proof
     assert "ServiceIncidentReport" in public_proof
     assert "model_response_parsed" in public_proof
@@ -67,6 +71,7 @@ def test_public_submission_artifacts_do_not_contain_live_secret_shapes():
         "MEMO.md",
         "README.md",
         "docs/live-proof.md",
+        "docs/real-slow-query-summary.json",
         "docs/model-driven-proof.md",
         "docs/subagent-proof.md",
         "codex-traces-redacted.jsonl",
