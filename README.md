@@ -82,6 +82,12 @@ The runner prompts for credentials interactively, writes `.sentinel/live-run-<ti
 
 The credential prompt still asks for `DATABASE_URL` with the local Docker PostgreSQL default, because that is the production-shaped database configuration. For the exact video checkpoint proof, the default runner then asks for `SQLITE_CHECKPOINT_DATABASE_URL` and uses that file-backed SQLite store at `sqlite:////data/sentinel-live-checkpoint.sqlite3` so the restart proof is visibly a SQLite resume. Use `--checkpoint-backend postgres` only when you want the local Docker PostgreSQL store instead of the exact SQLite checkpoint proof.
 
+After the run, independently verify the captured log:
+
+```bash
+python3 scripts/verify_credentialed_live_log.py .sentinel/live-run-<timestamp>.log
+```
+
 ## Deployment
 
 For the local production-shaped stack:
