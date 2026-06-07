@@ -409,12 +409,6 @@ def create_app(settings: SentinelSettings | None = None) -> FastAPI:
                     investigation_id=existing_id,
                     message=f"Duplicate generic webhook for {incident_id}; returning existing investigation",
                 )
-        _require_runtime_ready(
-            settings,
-            store,
-            operation="free-tier live investigation",
-            provider_preflight=True,
-        )
         state, created = _create_received_investigation(
             store,
             payload,

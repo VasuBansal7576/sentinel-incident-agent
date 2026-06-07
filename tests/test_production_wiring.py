@@ -1937,10 +1937,7 @@ def test_generic_webhook_returns_investigation_id_status_and_schedules_live_work
     assert response.json()["message"] == "Accepted generic webhook for FREE-ALERT-1"
     investigation_id = response.json()["investigation_id"]
     assert investigation_id.startswith("inv-")
-    assert readiness_checks == [
-        {"operation": "free-tier live investigation"},
-        {"operation": "free-tier live investigation", "provider_preflight": True},
-    ]
+    assert readiness_checks == [{"operation": "free-tier live investigation"}]
     assert captured == [
         {
             "payload": {

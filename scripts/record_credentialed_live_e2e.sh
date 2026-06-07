@@ -23,7 +23,7 @@ echo "structured_log: ${structured_log}"
 echo "Secrets are entered in the Python prompts; getpass values are not echoed."
 
 set +e
-python3 scripts/run_credentialed_live_e2e.py --accept-defaults --log-path "$structured_log" "$@" 2>&1 | tee "$terminal_log"
+PYTHONUNBUFFERED=1 python3 -u scripts/run_credentialed_live_e2e.py --accept-defaults --log-path "$structured_log" "$@" 2>&1 | tee "$terminal_log"
 status=${PIPESTATUS[0]}
 set -e
 

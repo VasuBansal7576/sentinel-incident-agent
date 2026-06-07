@@ -1037,14 +1037,14 @@ class _LiveLog:
         line = f"\n=== {datetime.now(UTC).isoformat()} {name} ===\n"
         self.handle.write(line)
         self.handle.flush()
-        print(line, end="")
+        print(line, end="", flush=True)
 
     def json(self, payload: Any) -> None:
         assert self.handle is not None
         text = json.dumps(payload, indent=2, sort_keys=True, default=str)
         self.handle.write(text + "\n")
         self.handle.flush()
-        print(text)
+        print(text, flush=True)
 
 
 if __name__ == "__main__":
