@@ -5,7 +5,7 @@ import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 from urllib.parse import urlparse
 
 from sentinel.profiles import apply_selected_profile_defaults
@@ -91,55 +91,60 @@ class SentinelSettings:
 
     @classmethod
     def from_env(cls) -> "SentinelSettings":
-        profile = apply_selected_profile_defaults()
+        environ = dict(os.environ)
+        profile = apply_selected_profile_defaults(environ)
         return cls(
-            datadog_api_key=_env_optional_text("DD_API_KEY"),
-            datadog_app_key=_env_optional_text("DD_APP_KEY") or _env_optional_text("DATADOG_APP_KEY"),
-            datadog_site=_env_datadog_site("DD_SITE", "datadoghq.com"),
-            datadog_oauth_token=_env_optional_text("DD_OAUTH_TOKEN"),
-            prometheus_url=_env_optional_text("PROMETHEUS_URL"),
-            loki_url=_env_optional_text("LOKI_URL"),
-            datadog_client_id=_env_optional_text("DD_CLIENT_ID") or _env_optional_text("DATADOG_CLIENT_ID"),
-            datadog_client_secret=_env_optional_text("DD_CLIENT_SECRET") or _env_optional_text("DATADOG_CLIENT_SECRET"),
-            datadog_redirect_uri=_env_optional_text("DD_REDIRECT_URI") or _env_optional_text("DATADOG_REDIRECT_URI"),
+            datadog_api_key=_env_optional_text("DD_API_KEY", environ),
+            datadog_app_key=_env_optional_text("DD_APP_KEY", environ) or _env_optional_text("DATADOG_APP_KEY", environ),
+            datadog_site=_env_datadog_site("DD_SITE", "datadoghq.com", environ),
+            datadog_oauth_token=_env_optional_text("DD_OAUTH_TOKEN", environ),
+            prometheus_url=_env_optional_text("PROMETHEUS_URL", environ),
+            loki_url=_env_optional_text("LOKI_URL", environ),
+            datadog_client_id=_env_optional_text("DD_CLIENT_ID", environ)
+            or _env_optional_text("DATADOG_CLIENT_ID", environ),
+            datadog_client_secret=_env_optional_text("DD_CLIENT_SECRET", environ)
+            or _env_optional_text("DATADOG_CLIENT_SECRET", environ),
+            datadog_redirect_uri=_env_optional_text("DD_REDIRECT_URI", environ)
+            or _env_optional_text("DATADOG_REDIRECT_URI", environ),
             datadog_oauth_required_scopes=_env_scope_tuple(
                 "DD_OAUTH_REQUIRED_SCOPES",
                 DATADOG_LIVE_READ_OAUTH_SCOPES,
+                environ,
             ),
-            github_token=_env_optional_text("GITHUB_TOKEN"),
-            github_owner=_env_optional_text("GITHUB_OWNER"),
-            github_repo=_env_optional_text("GITHUB_REPO"),
-            github_write_enabled=_env_bool("SENTINEL_GITHUB_WRITE_ENABLED", False),
-            pagerduty_api_key=_env_optional_text("PAGERDUTY_API_KEY"),
-            pagerduty_requester_email=_env_optional_text("PAGERDUTY_REQUESTER_EMAIL"),
-            slack_bot_token=_env_optional_text("SLACK_BOT_TOKEN"),
-            slack_channel_id=_env_optional_text("SLACK_CHANNEL_ID"),
-            discord_webhook_url=_env_optional_text("DISCORD_WEBHOOK_URL"),
-            slack_client_id=_env_optional_text("SLACK_CLIENT_ID"),
-            slack_client_secret=_env_optional_text("SLACK_CLIENT_SECRET"),
-            slack_redirect_uri=_env_optional_text("SLACK_REDIRECT_URI"),
-            slack_oauth_scopes=_env_scope_tuple("SLACK_OAUTH_SCOPES", SLACK_LIVE_OAUTH_SCOPES),
-            github_client_id=_env_optional_text("GITHUB_CLIENT_ID"),
-            github_client_secret=_env_optional_text("GITHUB_CLIENT_SECRET"),
-            github_redirect_uri=_env_optional_text("GITHUB_REDIRECT_URI"),
-            github_oauth_scopes=_env_scope_tuple("GITHUB_OAUTH_SCOPES", GITHUB_LIVE_OAUTH_SCOPES),
-            oauth_state_secret=_env_optional_text("SENTINEL_OAUTH_STATE_SECRET"),
-            api_token=_env_optional_text("SENTINEL_API_TOKEN"),
-            pagerduty_webhook_secret=_env_optional_text("PAGERDUTY_WEBHOOK_SECRET"),
-            pagerduty_webhook_previous_secret=_env_optional_text("PAGERDUTY_WEBHOOK_PREVIOUS_SECRET"),
-            pagerduty_webhook_subscription_id=_env_optional_text("PAGERDUTY_WEBHOOK_SUBSCRIPTION_ID"),
-            kubeconfig=_env_optional_text("KUBECONFIG"),
-            kubernetes_namespace=_env_text("KUBERNETES_NAMESPACE", "default"),
-            kubectl_timeout_seconds=_env_positive_float("SENTINEL_KUBECTL_TIMEOUT_SECONDS", 20.0),
-            live_max_pages=_env_positive_int("SENTINEL_LIVE_MAX_PAGES", 25),
-            database_url=_env_optional_text("DATABASE_URL"),
-            redis_url=_env_optional_text("REDIS_URL"),
-            default_service=_env_text("SENTINEL_DEFAULT_SERVICE", "payment-service"),
-            approver_id=_env_optional_text("SENTINEL_APPROVER_ID"),
-            service_aliases=_service_aliases_from_env(_env_optional_text("SENTINEL_SERVICE_ALIASES")),
-            environment=_env_text("SENTINEL_ENV", "production"),
+            github_token=_env_optional_text("GITHUB_TOKEN", environ),
+            github_owner=_env_optional_text("GITHUB_OWNER", environ),
+            github_repo=_env_optional_text("GITHUB_REPO", environ),
+            github_write_enabled=_env_bool("SENTINEL_GITHUB_WRITE_ENABLED", False, environ),
+            pagerduty_api_key=_env_optional_text("PAGERDUTY_API_KEY", environ),
+            pagerduty_requester_email=_env_optional_text("PAGERDUTY_REQUESTER_EMAIL", environ),
+            slack_bot_token=_env_optional_text("SLACK_BOT_TOKEN", environ),
+            slack_channel_id=_env_optional_text("SLACK_CHANNEL_ID", environ),
+            discord_webhook_url=_env_optional_text("DISCORD_WEBHOOK_URL", environ),
+            slack_client_id=_env_optional_text("SLACK_CLIENT_ID", environ),
+            slack_client_secret=_env_optional_text("SLACK_CLIENT_SECRET", environ),
+            slack_redirect_uri=_env_optional_text("SLACK_REDIRECT_URI", environ),
+            slack_oauth_scopes=_env_scope_tuple("SLACK_OAUTH_SCOPES", SLACK_LIVE_OAUTH_SCOPES, environ),
+            github_client_id=_env_optional_text("GITHUB_CLIENT_ID", environ),
+            github_client_secret=_env_optional_text("GITHUB_CLIENT_SECRET", environ),
+            github_redirect_uri=_env_optional_text("GITHUB_REDIRECT_URI", environ),
+            github_oauth_scopes=_env_scope_tuple("GITHUB_OAUTH_SCOPES", GITHUB_LIVE_OAUTH_SCOPES, environ),
+            oauth_state_secret=_env_optional_text("SENTINEL_OAUTH_STATE_SECRET", environ),
+            api_token=_env_optional_text("SENTINEL_API_TOKEN", environ),
+            pagerduty_webhook_secret=_env_optional_text("PAGERDUTY_WEBHOOK_SECRET", environ),
+            pagerduty_webhook_previous_secret=_env_optional_text("PAGERDUTY_WEBHOOK_PREVIOUS_SECRET", environ),
+            pagerduty_webhook_subscription_id=_env_optional_text("PAGERDUTY_WEBHOOK_SUBSCRIPTION_ID", environ),
+            kubeconfig=_env_optional_text("KUBECONFIG", environ),
+            kubernetes_namespace=_env_text("KUBERNETES_NAMESPACE", "default", environ),
+            kubectl_timeout_seconds=_env_positive_float("SENTINEL_KUBECTL_TIMEOUT_SECONDS", 20.0, environ),
+            live_max_pages=_env_positive_int("SENTINEL_LIVE_MAX_PAGES", 25, environ),
+            database_url=_env_optional_text("DATABASE_URL", environ),
+            redis_url=_env_optional_text("REDIS_URL", environ),
+            default_service=_env_text("SENTINEL_DEFAULT_SERVICE", "payment-service", environ),
+            approver_id=_env_optional_text("SENTINEL_APPROVER_ID", environ),
+            service_aliases=_service_aliases_from_env(_env_optional_text("SENTINEL_SERVICE_ALIASES", environ)),
+            environment=_env_text("SENTINEL_ENV", "production", environ),
             profile=profile.name,
-            mcp_enabled=_env_bool("SENTINEL_MCP_ENABLED", False),
+            mcp_enabled=_env_bool("SENTINEL_MCP_ENABLED", False, environ),
         )
 
     def missing_live_credentials(self) -> list[str]:
@@ -260,8 +265,8 @@ def _normalize_datadog_site(value: str) -> str:
     return domain
 
 
-def _env_positive_float(name: str, default: float) -> float:
-    raw = os.getenv(name)
+def _env_positive_float(name: str, default: float, environ: Mapping[str, str] | None = None) -> float:
+    raw = _env_raw(name, environ)
     if raw is None or not raw.strip():
         return default
     try:
@@ -273,24 +278,24 @@ def _env_positive_float(name: str, default: float) -> float:
     return value
 
 
-def _env_optional_text(name: str) -> str | None:
-    raw = os.getenv(name)
+def _env_optional_text(name: str, environ: Mapping[str, str] | None = None) -> str | None:
+    raw = _env_raw(name, environ)
     if raw is None:
         return None
     value = raw.strip()
     return value or None
 
 
-def _env_text(name: str, default: str) -> str:
-    return _env_optional_text(name) or default
+def _env_text(name: str, default: str, environ: Mapping[str, str] | None = None) -> str:
+    return _env_optional_text(name, environ) or default
 
 
-def _env_datadog_site(name: str, default: str) -> str:
-    return _normalize_datadog_site(_env_text(name, default))
+def _env_datadog_site(name: str, default: str, environ: Mapping[str, str] | None = None) -> str:
+    return _normalize_datadog_site(_env_text(name, default, environ))
 
 
-def _env_positive_int(name: str, default: int) -> int:
-    raw = os.getenv(name)
+def _env_positive_int(name: str, default: int, environ: Mapping[str, str] | None = None) -> int:
+    raw = _env_raw(name, environ)
     if raw is None or not raw.strip():
         return default
     try:
@@ -302,8 +307,8 @@ def _env_positive_int(name: str, default: int) -> int:
     return value
 
 
-def _env_bool(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
+def _env_bool(name: str, default: bool, environ: Mapping[str, str] | None = None) -> bool:
+    raw = _env_raw(name, environ)
     if raw is None or not raw.strip():
         return default
     value = raw.strip().lower()
@@ -314,8 +319,12 @@ def _env_bool(name: str, default: bool) -> bool:
     raise ValueError(f"{name} must be a boolean: true/false")
 
 
-def _env_scope_tuple(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
-    raw = _env_optional_text(name)
+def _env_scope_tuple(
+    name: str,
+    default: tuple[str, ...],
+    environ: Mapping[str, str] | None = None,
+) -> tuple[str, ...]:
+    raw = _env_optional_text(name, environ)
     if raw is None:
         return default
     scopes: list[str] = []
@@ -326,6 +335,10 @@ def _env_scope_tuple(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
             scopes.append(scope)
             seen.add(scope)
     return tuple(scopes) or default
+
+
+def _env_raw(name: str, environ: Mapping[str, str] | None = None) -> str | None:
+    return (environ if environ is not None else os.environ).get(name)
 
 
 def _required_alias_text(value: Any, field: str) -> str:
