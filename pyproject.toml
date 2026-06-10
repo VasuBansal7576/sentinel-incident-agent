@@ -22,3 +22,44 @@ asyncio_default_fixture_loop_scope = "function"
 markers = [
   "live: requires real external API credentials and RUN_LIVE_TESTS=1",
 ]
+
+[tool.setuptools.packages.find]
+include = ["sentinel*"]
+
+[tool.setuptools.package-data]
+sentinel = ["profiles/*.yaml"]
+
+[tool.ruff]
+target-version = "py313"
+exclude = [
+  ".git",
+  ".mypy_cache",
+  ".pytest_cache",
+  ".sentinel",
+  ".submission",
+  ".venv",
+  "sentinel_incident_agent.egg-info",
+]
+
+[tool.ruff.lint]
+ignore = ["E402"]
+
+[tool.mypy]
+python_version = "3.13"
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = false
+explicit_package_bases = true
+exclude = [
+  "^\\.sentinel/",
+  "^\\.submission/",
+  "^\\.venv/",
+]
+
+[[tool.mypy.overrides]]
+module = [
+  "sentinel.connectivity",
+  "sentinel.live_clients",
+  "sentinel.real_tools",
+]
+ignore_errors = true

@@ -12,8 +12,9 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from sentinel.models import InvestigationState, InvestigationStatus
+from sentinel.models import InvestigationState, InvestigationStatus, STATE_MACHINE
 from sentinel.orchestrator import SentinelOrchestrator
+from sentinel.store import SQLiteInvestigationStore
 
 
 DEFAULT_INCIDENT_ID = "PD-2026-06-03-0312"
@@ -43,6 +44,11 @@ def main() -> None:
         default=None,
         help="Optional path for a machine-readable summary. The terminal output stays narrative-first.",
     )
+    parser.add_argument(
+        "--memory-db",
+        default=None,
+        help="Optional SQLite path for persistent operational memory across demo runs.",
+    )
     args = parser.parse_args()
 
     compose = (
@@ -55,7 +61,8 @@ def main() -> None:
         raise SystemExit(2)
 
     seed = _seed_demo_data()
-    state = SentinelOrchestrator().run_scenario("golden_path", auto_approve=True)
+    store = _demo_store(args.memory_db)
+    state = SentinelOrchestrator(store=store).run_scenario("golden_path", auto_approve=True)
     output = render_demo(state, compose=compose, seed=seed)
     print(output)
     if args.summary_output:
@@ -116,6 +123,12 @@ def _prepare_compose_demo_env() -> tuple[Path, dict[str, str]]:
     )
     demo_env = {
         "SENTINEL_ENV": "development",
+        "SENTINEL_PROFILE": "free-local",
+        "SENTINEL_HOST_PORT": "18000",
+        "POSTGRES_HOST_PORT": "15432",
+        "REDIS_HOST_PORT": "16379",
+        "PROMETHEUS_HOST_PORT": "19090",
+        "LOKI_HOST_PORT": "13100",
         "SENTINEL_API_TOKEN": "recording-demo-token",
         "SENTINEL_APPROVER_ID": "eng-oncall",
         "PROMETHEUS_URL": "http://prometheus:9090",
@@ -184,6 +197,15 @@ def render_demo(state: InvestigationState, *, compose: dict[str, Any], seed: dic
         f"Full run: {len(state.tool_calls)} tool calls, {len(state.plan_steps)} plan steps, status={state.status.value}",
         "",
     ]
+    memory_hints = state.artifacts.get("operational_memory_hints", [])
+    if memory_hints:
+        lines.extend(
+            [
+                "🧭 Operational Memory",
+                *[f"- {hint}" for hint in memory_hints],
+                "",
+            ]
+        )
     for index, row in enumerate(story, start=1):
         lines.extend(
             [
@@ -208,6 +230,7 @@ def render_demo(state: InvestigationState, *, compose: dict[str, Any], seed: dic
             "",
             "🎯 Diagnosis",
             state.diagnosis.summary if state.diagnosis else "Diagnosis unavailable.",
+            *(_confidence_block_lines(state) if state.diagnosis else []),
             "",
             "🛠️ Remediation",
             state.recommendation.command if state.recommendation else "No recommendation produced.",
@@ -313,22 +336,69 @@ def _summary(
     return {
         "status": state.status.value,
         "current_state": state.current_state.value,
+        "state_machine_states": [state_name.value for state_name in STATE_MACHINE],
+        "visited_states": _visited_states(state),
         "investigation_id": state.id,
         "incident_id": state.incident_id,
         "compose": compose,
         "seed": seed,
         "tool_calls": len(state.tool_calls),
-        "plan_steps": len(state.plan_steps),
+        "plan_steps": [step.model_dump(mode="json") for step in state.plan_steps],
         "story_tools": list(CORE_STORY_TOOLS),
         "all_tool_calls_have_reasoning_trace": all(
             bool(call.reasoning_trace.strip()) for call in state.tool_calls
         ),
+        "operational_memory_hints": state.artifacts.get("operational_memory_hints", []),
+        "service_context": state.artifacts.get("service_context", {}),
+        "audit_events": [event.model_dump(mode="json") for event in state.audit_events],
+        "context_summary": state.context_summary,
         "diagnosis": state.diagnosis.summary if state.diagnosis else None,
+        "confidence_block": (
+            state.diagnosis.confidence_block.model_dump(mode="json")
+            if state.diagnosis
+            else None
+        ),
         "recommendation": state.recommendation.command if state.recommendation else None,
         "remediation": state.remediation_result.model_dump(mode="json") if state.remediation_result else None,
         "discord_preview": _discord_preview(state),
         "terminal_output": output,
     }
+
+
+def _visited_states(state: InvestigationState) -> list[str]:
+    visited: list[str] = []
+    for event in state.audit_events:
+        if event.event_type != "state_transition":
+            continue
+        value = event.payload.get("state")
+        if isinstance(value, str) and value not in visited:
+            visited.append(value)
+    return visited
+
+
+def _demo_store(path: str | None) -> SQLiteInvestigationStore:
+    if not path:
+        return SQLiteInvestigationStore()
+    db_path = Path(path)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    return SQLiteInvestigationStore(db_path)
+
+
+def _confidence_block_lines(state: InvestigationState) -> list[str]:
+    if not state.diagnosis:
+        return []
+    block = state.diagnosis.confidence_block
+    return [
+        f"Confidence: {block.confidence_percent}%",
+        "Supporting signals: " + _joined_or_none(block.supporting_signals),
+        "Conflicting signals: " + _joined_or_none(block.conflicting_signals),
+        f"Top alternative hypothesis: {block.top_alternative_hypothesis}",
+        "Unconfirmed hypotheses: " + _joined_or_none(block.unconfirmed_hypotheses),
+    ]
+
+
+def _joined_or_none(values: list[str]) -> str:
+    return "; ".join(values) if values else "none"
 
 
 def _write_summary_output(summary: dict[str, Any], output_path: Path) -> None:

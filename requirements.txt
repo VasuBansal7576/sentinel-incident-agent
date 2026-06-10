@@ -1,0 +1,8 @@
+fastapi
+httpx
+kubernetes
+opentelemetry-api
+psycopg[binary]
+pydantic
+redis
+uvicorn

@@ -1,0 +1,12 @@
+name: free-local
+description: Local Docker Compose defaults with Prometheus, Loki, SQLite/Postgres, Redis, and no paid provider credentials.
+defaults:
+  SENTINEL_ENV: development
+  PROMETHEUS_URL: http://prometheus:9090
+  LOKI_URL: http://loki:3100
+  SENTINEL_GITHUB_WRITE_ENABLED: "false"
+credential_checks:
+  - SENTINEL_API_TOKEN
+  - SENTINEL_APPROVER_ID
+  - DATABASE_URL
+  - REDIS_URL

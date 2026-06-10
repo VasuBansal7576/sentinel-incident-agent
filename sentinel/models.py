@@ -71,12 +71,30 @@ class Evidence(BaseModel):
     provenance: str
 
 
+class DiagnosisConfidenceBlock(BaseModel):
+    confidence_percent: int = Field(ge=0, le=100)
+    supporting_signals: list[str] = Field(default_factory=list)
+    conflicting_signals: list[str] = Field(default_factory=list)
+    top_alternative_hypothesis: str
+    unconfirmed_hypotheses: list[str] = Field(default_factory=list)
+
+
+def default_confidence_block() -> DiagnosisConfidenceBlock:
+    return DiagnosisConfidenceBlock(
+        confidence_percent=0,
+        supporting_signals=[],
+        conflicting_signals=[],
+        top_alternative_hypothesis="No alternative hypothesis has been evaluated yet.",
+    )
+
+
 class Diagnosis(BaseModel):
     summary: str
     confidence: ConfidenceLevel
     evidence: list[Evidence] = Field(default_factory=list)
     conflicts: list[str] = Field(default_factory=list)
     evidence_gaps: list[str] = Field(default_factory=list)
+    confidence_block: DiagnosisConfidenceBlock = Field(default_factory=default_confidence_block)
 
 
 class Recommendation(BaseModel):

@@ -10,7 +10,7 @@ from sentinel.config import SentinelSettings
 from sentinel.connectivity import ConnectivityCheck, ConnectivityReport
 from sentinel.errors import ToolErrorKind, ToolExecutionError
 from sentinel.live_clients import LiveApiClient, LiveProviderClients
-from sentinel.models import Evidence, ApprovalRequest, InvestigationState, InvestigationStatus, Recommendation, StateName, ToolCallRecord
+from sentinel.models import AuditEvent, Evidence, ApprovalRequest, InvestigationState, InvestigationStatus, Recommendation, StateName, ToolCallRecord
 from sentinel.oauth import OAuthManager, pagerduty_signature_header
 from sentinel.rate_limiters import SharedRateLimiter
 from sentinel.real_tools import LIVE_TOOL_HANDLERS, LiveToolFactory, RealTool
@@ -930,7 +930,7 @@ def test_ready_recovers_when_initial_store_construction_later_succeeds(monkeypat
     assert body["database_reachable"] is True
     assert "database_error" not in body
     assert len(calls) == 2
-    assert app.state.store.count_rows("schema_migrations") == 1
+    assert app.state.store.count_rows("schema_migrations") >= 2
     assert "db-secret" not in rendered
     assert "dd-secret" not in rendered
     assert "ghp-secret-token" not in rendered
@@ -2634,6 +2634,113 @@ def test_approval_endpoint_resumes_waiting_investigation_without_freeform_slack(
     assert captured["approval_command"].idempotency_key.startswith(
         f"{state.id}:approval-command:{state.approval_request.id}:eng-oncall:approve"
     )
+
+
+def test_mcp_endpoint_is_disabled_by_default():
+    response = TestClient(create_app(_stub_live_settings(mcp_enabled=False))).post(
+        "/mcp",
+        json={"jsonrpc": "2.0", "id": 1, "method": "list_tools"},
+        headers=_api_headers(),
+    )
+
+    assert response.status_code == 404
+
+
+def test_mcp_get_investigation_matches_rest_payload():
+    settings = _stub_live_settings(mcp_enabled=True)
+    app = create_app(settings)
+    state = _waiting_approval_state()
+    app.state.store.save_state(state)
+    client = TestClient(app)
+
+    rest = client.get(f"/investigations/{state.id}", headers=_api_headers()).json()
+    mcp = client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "get_investigation",
+                "arguments": {"investigation_id": state.id},
+            },
+        },
+        headers=_api_headers(),
+    ).json()["result"]
+
+    for key in ["investigation_id", "incident_id", "status", "current_state", "approval_request_id"]:
+        assert mcp[key] == rest[key]
+
+
+def test_mcp_approval_produces_same_audit_artifact_as_rest(monkeypatch):
+    def audited_resume(settings, investigation_id, approval_command, store=None):
+        state = store.load_state(investigation_id)
+        state.approval_command = approval_command
+        state.status = InvestigationStatus.COMPLETED
+        state.current_state = StateName.POST_MORTEM
+        payload = {
+            "schema_version": "remediation_audit.v1",
+            "approval_request": {"id": approval_command.request_id},
+            "authorizer": {"approver_id": approval_command.approver_id},
+            "scope": {"affected_service": "payment-service"},
+            "action": {"name": "rollback", "status": "executed"},
+            "verification_result": {"verified": True},
+            "timestamp": "2026-06-10T00:00:00+00:00",
+        }
+        event = AuditEvent(
+            investigation_id=state.id,
+            event_type="remediation_audit",
+            payload=payload,
+        )
+        state.audit_events.append(event)
+        store.append_audit_event(event)
+        store.save_state(state)
+        return state
+
+    monkeypatch.setattr(
+        "sentinel.webapp._resume_live_investigation_with_approval",
+        audited_resume,
+    )
+    rest_app = create_app(_stub_live_settings(mcp_enabled=True))
+    mcp_app = create_app(_stub_live_settings(mcp_enabled=True))
+    rest_state = _waiting_approval_state()
+    mcp_state = _waiting_approval_state()
+    mcp_state.approval_request.id = rest_state.approval_request.id
+    rest_app.state.store.save_state(rest_state)
+    mcp_app.state.store.save_state(mcp_state)
+
+    rest_client = TestClient(rest_app)
+    mcp_client = TestClient(mcp_app)
+    rest_response = rest_client.post(
+        f"/investigations/{rest_state.id}/approval",
+        json={
+            "request_id": rest_state.approval_request.id,
+            "approver_id": "eng-oncall",
+            "decision": "approve",
+        },
+        headers=_api_headers(),
+    )
+    mcp_response = mcp_client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "approve_investigation",
+            "params": {
+                "investigation_id": mcp_state.id,
+                "request_id": mcp_state.approval_request.id,
+                "approver_id": "eng-oncall",
+                "decision": "approve",
+            },
+        },
+        headers=_api_headers(),
+    )
+
+    assert rest_response.status_code == 200
+    assert mcp_response.status_code == 200
+    rest_audit = rest_client.get(f"/investigations/{rest_state.id}/audit", headers=_api_headers()).json()
+    mcp_audit = mcp_client.get(f"/investigations/{mcp_state.id}/audit", headers=_api_headers()).json()
+    assert mcp_audit["remediation_audits"][0] == rest_audit["remediation_audits"][0]
 
 
 def test_approval_endpoint_rejects_missing_operator_token_before_resume(monkeypatch):

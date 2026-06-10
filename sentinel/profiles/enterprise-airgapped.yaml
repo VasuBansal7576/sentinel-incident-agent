@@ -1,0 +1,12 @@
+name: enterprise-airgapped
+description: Airgapped/self-hosted profile with local infrastructure, Kubernetes access, and no SaaS credentials required.
+defaults:
+  SENTINEL_ENV: production
+  PROMETHEUS_URL: http://prometheus:9090
+  LOKI_URL: http://loki:3100
+  SENTINEL_GITHUB_WRITE_ENABLED: "false"
+credential_checks:
+  - SENTINEL_API_TOKEN
+  - DATABASE_URL
+  - REDIS_URL
+  - KUBECONFIG

@@ -1,0 +1,16 @@
+name: startup
+description: Small-team hosted-provider profile using GitHub plus free observability and Discord for notifications.
+defaults:
+  SENTINEL_ENV: production
+  PROMETHEUS_URL: http://prometheus:9090
+  LOKI_URL: http://loki:3100
+  SENTINEL_GITHUB_WRITE_ENABLED: "false"
+credential_checks:
+  - SENTINEL_API_TOKEN
+  - SENTINEL_APPROVER_ID
+  - DATABASE_URL
+  - REDIS_URL
+  - GITHUB_TOKEN
+  - GITHUB_OWNER
+  - GITHUB_REPO
+  - DISCORD_WEBHOOK_URL

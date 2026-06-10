@@ -79,7 +79,7 @@ def missing_live_credentials_without_oauth_store(settings: SentinelSettings) -> 
 
 def save_slack_oauth_payload(store: Any, payload: dict[str, Any]) -> None:
     access_token = _required_access_token(payload, "Slack")
-    authed_user = _optional_payload_object(payload.get("authed_user"), "Slack", "authed_user") or {}
+    _optional_payload_object(payload.get("authed_user"), "Slack", "authed_user")
     scopes = _split_scopes(payload.get("scope"))
     team = _optional_payload_object(payload.get("team"), "Slack", "team") or {}
     store.save_oauth_token(

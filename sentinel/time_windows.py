@@ -72,25 +72,25 @@ def repository_payload(state: Any | None, service: str) -> dict[str, Any]:
 
 
 def observability_window(state: Any | None) -> str:
-    if _is_live(state):
+    if state is not None and _is_live(state):
         return state.artifacts.get("observability_window") or LIVE_OBSERVABILITY_WINDOW
     return SIMULATED_OBSERVABILITY_WINDOW
 
 
 def observability_window_end(state: Any | None) -> str | None:
-    if _is_live(state):
+    if state is not None and _is_live(state):
         return state.artifacts.get("observability_window_end") or LIVE_WINDOW_END
     return None
 
 
 def repository_window(state: Any | None) -> str:
-    if _is_live(state):
+    if state is not None and _is_live(state):
         return state.artifacts.get("repo_window") or LIVE_REPOSITORY_WINDOW
     return SIMULATED_REPOSITORY_WINDOW
 
 
 def repository_window_end(state: Any | None) -> str | None:
-    if _is_live(state):
+    if state is not None and _is_live(state):
         return state.artifacts.get("repo_window_end") or LIVE_WINDOW_END
     return None
 

@@ -1,3 +1,5 @@
+[![CI](https://github.com/VasuBansal7576/sentinel-incident-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/VasuBansal7576/sentinel-incident-agent/actions/workflows/ci.yml)
+
 SENTINEL is a production-shaped incident agent. The deterministic path proves 26-step long-horizon orchestration with 37 tool calls. The latest credentialed live path proves 34 real tool calls across Groq, GitHub, Prometheus, Loki, SQLite, generic webhook, and Discord: model tool planning -> metrics -> logs -> repo evidence -> subagents -> missing index diagnosis -> human approval -> idx_orders_user_id creation -> verified fix -> Discord timeline.
 
 # SENTINEL
@@ -108,11 +110,49 @@ The webhook receiver exposes:
 POST /webhooks/generic
 POST /webhooks/pagerduty
 GET  /investigations/{investigation_id}
+POST /mcp
 POST /investigations/{investigation_id}/approval
 GET  /metrics
 GET  /ready
 GET  /ready/live
 ```
+
+## MCP Access
+
+Enable the MCP endpoint with `SENTINEL_MCP_ENABLED=true` and use the same bearer token as the operator REST API:
+
+```bash
+SENTINEL_MCP_ENABLED=true make prod
+```
+
+HTTP-capable MCP clients such as Cursor, or Claude clients configured for remote/HTTP MCP, can point at:
+
+```text
+URL: http://localhost:8000/mcp
+Header: Authorization: Bearer <SENTINEL_API_TOKEN>
+```
+
+Example client configuration:
+
+```json
+{
+  "mcpServers": {
+    "sentinel": {
+      "url": "http://localhost:8000/mcp",
+      "headers": {
+        "Authorization": "Bearer ${SENTINEL_API_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+Exposed tools:
+
+- `get_investigation`: returns the same payload as `GET /investigations/{id}`.
+- `approve_investigation`: submits the same structured approval command as the REST approval route and writes the same remediation audit artifact.
+- `search_memory`: searches operational memory hints and service context.
+- `list_tools`: lists the SENTINEL MCP tool surface.
 
 ## Additional Cloud Integrations
 

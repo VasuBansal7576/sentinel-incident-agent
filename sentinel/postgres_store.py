@@ -5,7 +5,15 @@ from threading import RLock
 from typing import Any
 
 from sentinel.models import AuditEvent, EvaluationResult, InvestigationState, ToolCallRecord
-from sentinel.store import validate_oauth_token_record
+from sentinel.store import (
+    _incident_hint,
+    _memory_text,
+    _runbook_snippet_from_fingerprint,
+    _service_profile_from_fingerprint,
+    _services_from_alert,
+    _stable_memory_id,
+    validate_oauth_token_record,
+)
 
 
 class PostgresInvestigationStore:
@@ -79,6 +87,33 @@ class PostgresInvestigationStore:
                         scopes_json JSONB NOT NULL,
                         metadata_json JSONB NOT NULL,
                         updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                    );
+                    INSERT INTO schema_migrations(version) VALUES (2)
+                    ON CONFLICT (version) DO NOTHING;
+                    CREATE TABLE IF NOT EXISTS incident_fingerprints (
+                        id TEXT PRIMARY KEY,
+                        service_name TEXT NOT NULL,
+                        fingerprint_json JSONB NOT NULL,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                    );
+                    CREATE TABLE IF NOT EXISTS service_profiles (
+                        service_name TEXT PRIMARY KEY,
+                        profile_json JSONB NOT NULL,
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                    );
+                    CREATE TABLE IF NOT EXISTS approved_remediations (
+                        id TEXT PRIMARY KEY,
+                        service_name TEXT NOT NULL,
+                        action TEXT NOT NULL,
+                        remediation_json JSONB NOT NULL,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                    );
+                    CREATE TABLE IF NOT EXISTS runbook_snippets (
+                        id TEXT PRIMARY KEY,
+                        service_name TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        snippet TEXT NOT NULL,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
                     );
                     """
                 )
@@ -280,6 +315,132 @@ class PostgresInvestigationStore:
             "updated_at": row[7],
         }
 
+    def remember_incident(self, fingerprint: dict[str, Any]) -> None:
+        service_name = _memory_text(fingerprint.get("service_name") or fingerprint.get("service"))
+        if not service_name:
+            raise ValueError("incident fingerprint missing service_name")
+        normalized = {**fingerprint, "service_name": service_name}
+        fingerprint_id = _stable_memory_id("incident", normalized)
+        with self._lock:
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO incident_fingerprints(id, service_name, fingerprint_json)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (id) DO UPDATE SET
+                        service_name = excluded.service_name,
+                        fingerprint_json = excluded.fingerprint_json
+                    """,
+                    (fingerprint_id, service_name, self.Jsonb(normalized)),
+                )
+                cur.execute(
+                    """
+                    INSERT INTO service_profiles(service_name, profile_json, updated_at)
+                    VALUES (%s, %s, now())
+                    ON CONFLICT (service_name) DO UPDATE SET
+                        profile_json = excluded.profile_json,
+                        updated_at = now()
+                    """,
+                    (service_name, self.Jsonb(_service_profile_from_fingerprint(normalized))),
+                )
+                remediation = normalized.get("remediation")
+                if isinstance(remediation, dict) and remediation.get("status") == "executed":
+                    cur.execute(
+                        """
+                        INSERT INTO approved_remediations(id, service_name, action, remediation_json)
+                        VALUES (%s, %s, %s, %s)
+                        ON CONFLICT (id) DO UPDATE SET
+                            service_name = excluded.service_name,
+                            action = excluded.action,
+                            remediation_json = excluded.remediation_json
+                        """,
+                        (
+                            _stable_memory_id("remediation", normalized),
+                            service_name,
+                            _memory_text(remediation.get("action")) or "unknown",
+                            self.Jsonb(remediation),
+                        ),
+                    )
+                runbook = _runbook_snippet_from_fingerprint(normalized)
+                if runbook:
+                    cur.execute(
+                        """
+                        INSERT INTO runbook_snippets(id, service_name, title, snippet)
+                        VALUES (%s, %s, %s, %s)
+                        ON CONFLICT (id) DO UPDATE SET
+                            service_name = excluded.service_name,
+                            title = excluded.title,
+                            snippet = excluded.snippet
+                        """,
+                        (
+                            _stable_memory_id("runbook", normalized),
+                            service_name,
+                            runbook["title"],
+                            runbook["snippet"],
+                        ),
+                    )
+            self._conn.commit()
+
+    def get_similar_incidents(self, alert: dict[str, Any], *, limit: int = 3) -> list[str]:
+        services = _services_from_alert(alert)
+        if not services:
+            return []
+        placeholders = ", ".join(["%s"] * len(services))
+        with self._lock:
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT fingerprint_json FROM incident_fingerprints
+                    WHERE service_name IN ({placeholders})
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                    """,
+                    (*services, limit),
+                )
+                rows = cur.fetchall()
+        hints = [_incident_hint(row[0]) for row in rows]
+        return list(dict.fromkeys(hint for hint in hints if hint))[:limit]
+
+    def get_service_context(self, service_name: str) -> dict[str, Any]:
+        service_name = _memory_text(service_name)
+        if not service_name:
+            return {"service_name": "", "profile": None, "approved_remediations": [], "runbook_snippets": []}
+        with self._lock:
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    "SELECT profile_json FROM service_profiles WHERE service_name = %s",
+                    (service_name,),
+                )
+                profile_row = cur.fetchone()
+                cur.execute(
+                    """
+                    SELECT remediation_json FROM approved_remediations
+                    WHERE service_name = %s
+                    ORDER BY created_at DESC
+                    LIMIT 3
+                    """,
+                    (service_name,),
+                )
+                remediation_rows = cur.fetchall()
+                cur.execute(
+                    """
+                    SELECT title, snippet FROM runbook_snippets
+                    WHERE service_name = %s
+                    ORDER BY created_at DESC
+                    LIMIT 3
+                    """,
+                    (service_name,),
+                )
+                runbook_rows = cur.fetchall()
+        return {
+            "service_name": service_name,
+            "profile": profile_row[0] if profile_row else None,
+            "approved_remediations": [row[0] for row in remediation_rows],
+            "runbook_snippets": [
+                {"title": row[0], "snippet": row[1]} for row in runbook_rows
+            ],
+        }
+
     def count_rows(self, table: str) -> int:
         allowed = {
             "investigations",
@@ -288,6 +449,10 @@ class PostgresInvestigationStore:
             "idempotency_keys",
             "evaluation_results",
             "oauth_tokens",
+            "incident_fingerprints",
+            "service_profiles",
+            "approved_remediations",
+            "runbook_snippets",
             "schema_migrations",
         }
         if table not in allowed:
@@ -295,7 +460,10 @@ class PostgresInvestigationStore:
         with self._lock:
             with self._conn.cursor() as cur:
                 cur.execute(f"SELECT COUNT(*) FROM {table}")
-                return int(cur.fetchone()[0])
+                row = cur.fetchone()
+                if row is None:
+                    return 0
+                return int(row[0])
 
     def ping(self) -> bool:
         with self._lock:

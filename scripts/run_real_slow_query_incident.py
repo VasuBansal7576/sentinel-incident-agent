@@ -4,8 +4,6 @@ import argparse
 import json
 import os
 import subprocess
-import sys
-import tempfile
 import threading
 import time
 from datetime import UTC, datetime

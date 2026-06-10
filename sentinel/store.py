@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import sqlite3
 from threading import RLock
 from pathlib import Path
@@ -71,6 +72,32 @@ class SQLiteInvestigationStore:
                     scopes_json TEXT NOT NULL,
                     metadata_json TEXT NOT NULL,
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                INSERT OR IGNORE INTO schema_migrations(version) VALUES (2);
+                CREATE TABLE IF NOT EXISTS incident_fingerprints (
+                    id TEXT PRIMARY KEY,
+                    service_name TEXT NOT NULL,
+                    fingerprint_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE IF NOT EXISTS service_profiles (
+                    service_name TEXT PRIMARY KEY,
+                    profile_json TEXT NOT NULL,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE IF NOT EXISTS approved_remediations (
+                    id TEXT PRIMARY KEY,
+                    service_name TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    remediation_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE IF NOT EXISTS runbook_snippets (
+                    id TEXT PRIMARY KEY,
+                    service_name TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    snippet TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
                 """
             )
@@ -242,6 +269,118 @@ class SQLiteInvestigationStore:
             "updated_at": row["updated_at"],
         }
 
+    def remember_incident(self, fingerprint: dict[str, Any]) -> None:
+        service_name = _memory_text(fingerprint.get("service_name") or fingerprint.get("service"))
+        if not service_name:
+            raise ValueError("incident fingerprint missing service_name")
+        normalized = {**fingerprint, "service_name": service_name}
+        fingerprint_id = _stable_memory_id("incident", normalized)
+        with self._lock, self._conn:
+            self._conn.execute(
+                """
+                INSERT OR REPLACE INTO incident_fingerprints(id, service_name, fingerprint_json)
+                VALUES (?, ?, ?)
+                """,
+                (fingerprint_id, service_name, json.dumps(normalized, sort_keys=True, default=str)),
+            )
+            self._conn.execute(
+                """
+                INSERT INTO service_profiles(service_name, profile_json, updated_at)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(service_name) DO UPDATE SET
+                    profile_json=excluded.profile_json,
+                    updated_at=CURRENT_TIMESTAMP
+                """,
+                (
+                    service_name,
+                    json.dumps(_service_profile_from_fingerprint(normalized), sort_keys=True, default=str),
+                ),
+            )
+            remediation = normalized.get("remediation")
+            if isinstance(remediation, dict) and remediation.get("status") == "executed":
+                remediation_id = _stable_memory_id("remediation", normalized)
+                self._conn.execute(
+                    """
+                    INSERT OR REPLACE INTO approved_remediations(id, service_name, action, remediation_json)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (
+                        remediation_id,
+                        service_name,
+                        _memory_text(remediation.get("action")) or "unknown",
+                        json.dumps(remediation, sort_keys=True, default=str),
+                    ),
+                )
+            runbook = _runbook_snippet_from_fingerprint(normalized)
+            if runbook:
+                runbook_id = _stable_memory_id("runbook", normalized)
+                self._conn.execute(
+                    """
+                    INSERT OR REPLACE INTO runbook_snippets(id, service_name, title, snippet)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (
+                        runbook_id,
+                        service_name,
+                        runbook["title"],
+                        runbook["snippet"],
+                    ),
+                )
+
+    def get_similar_incidents(self, alert: dict[str, Any], *, limit: int = 3) -> list[str]:
+        services = _services_from_alert(alert)
+        if not services:
+            return []
+        placeholders = ", ".join("?" for _ in services)
+        query = f"""
+            SELECT fingerprint_json FROM incident_fingerprints
+            WHERE service_name IN ({placeholders})
+            ORDER BY created_at DESC
+            LIMIT ?
+        """
+        with self._lock:
+            rows = self._conn.execute(query, (*services, limit)).fetchall()
+        hints = [_incident_hint(json.loads(row["fingerprint_json"])) for row in rows]
+        return list(dict.fromkeys(hint for hint in hints if hint))[:limit]
+
+    def get_service_context(self, service_name: str) -> dict[str, Any]:
+        service_name = _memory_text(service_name)
+        if not service_name:
+            return {"service_name": "", "profile": None, "approved_remediations": [], "runbook_snippets": []}
+        with self._lock:
+            profile_row = self._conn.execute(
+                "SELECT profile_json FROM service_profiles WHERE service_name = ?",
+                (service_name,),
+            ).fetchone()
+            remediation_rows = self._conn.execute(
+                """
+                SELECT remediation_json FROM approved_remediations
+                WHERE service_name = ?
+                ORDER BY created_at DESC
+                LIMIT 3
+                """,
+                (service_name,),
+            ).fetchall()
+            runbook_rows = self._conn.execute(
+                """
+                SELECT title, snippet FROM runbook_snippets
+                WHERE service_name = ?
+                ORDER BY created_at DESC
+                LIMIT 3
+                """,
+                (service_name,),
+            ).fetchall()
+        return {
+            "service_name": service_name,
+            "profile": json.loads(profile_row["profile_json"]) if profile_row else None,
+            "approved_remediations": [
+                json.loads(row["remediation_json"]) for row in remediation_rows
+            ],
+            "runbook_snippets": [
+                {"title": row["title"], "snippet": row["snippet"]} for row in runbook_rows
+            ],
+        }
+
     def count_rows(self, table: str) -> int:
         allowed = {
             "investigations",
@@ -250,6 +389,10 @@ class SQLiteInvestigationStore:
             "idempotency_keys",
             "evaluation_results",
             "oauth_tokens",
+            "incident_fingerprints",
+            "service_profiles",
+            "approved_remediations",
+            "runbook_snippets",
             "schema_migrations",
         }
         if table not in allowed:
@@ -270,6 +413,65 @@ class SQLiteInvestigationStore:
 
 def safe_json_hash_payload(payload: Any) -> str:
     return json.dumps(payload, sort_keys=True, default=str)
+
+
+def _stable_memory_id(prefix: str, payload: dict[str, Any]) -> str:
+    digest = hashlib.sha256(
+        json.dumps(payload, sort_keys=True, default=str).encode()
+    ).hexdigest()[:16]
+    return f"{prefix}-{digest}"
+
+
+def _memory_text(value: Any) -> str:
+    return str(value).strip() if value is not None else ""
+
+
+def _services_from_alert(alert: dict[str, Any]) -> list[str]:
+    raw = alert.get("affected_services") or alert.get("services")
+    if isinstance(raw, list):
+        return [service for item in raw if (service := _memory_text(item))]
+    service = _memory_text(alert.get("service_name") or alert.get("service"))
+    return [service] if service else []
+
+
+def _incident_hint(fingerprint: dict[str, Any]) -> str:
+    service_name = _memory_text(fingerprint.get("service_name")) or "unknown-service"
+    incident_id = _memory_text(fingerprint.get("incident_id")) or "prior incident"
+    summary = _sentence_text(fingerprint.get("summary") or fingerprint.get("root_cause"))
+    raw_remediation = fingerprint.get("remediation")
+    remediation = raw_remediation if isinstance(raw_remediation, dict) else {}
+    action = _sentence_text(remediation.get("message") or remediation.get("action")) or "review the prior remediation and verification evidence"
+    if not summary:
+        return ""
+    return (
+        f"Similar prior incident {incident_id} affected {service_name}: {summary}. "
+        f"Prior approved remediation: {action}."
+    )
+
+
+def _sentence_text(value: Any) -> str:
+    return _memory_text(value).rstrip(".")
+
+
+def _service_profile_from_fingerprint(fingerprint: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "service_name": fingerprint["service_name"],
+        "last_incident_id": fingerprint.get("incident_id"),
+        "last_root_cause": fingerprint.get("root_cause"),
+        "last_summary": fingerprint.get("summary"),
+        "last_seen_at": fingerprint.get("timestamp"),
+    }
+
+
+def _runbook_snippet_from_fingerprint(fingerprint: dict[str, Any]) -> dict[str, str] | None:
+    summary = _memory_text(fingerprint.get("summary"))
+    if not summary:
+        return None
+    service_name = fingerprint["service_name"]
+    return {
+        "title": f"Prior SENTINEL incident for {service_name}",
+        "snippet": summary[:1000],
+    }
 
 
 def validate_oauth_token_record(

@@ -51,7 +51,7 @@ def test_golden_path_runs_8_state_26_step_post_mortem_flow(tmp_path):
     assert state.post_mortem.inferences
     assert loaded.id == state.id
     assert store.count_rows("tool_calls") >= 26
-    assert store.count_rows("schema_migrations") == 1
+    assert store.count_rows("schema_migrations") >= 2
 
 
 def test_subagents_have_isolated_contexts_and_scoped_registries():

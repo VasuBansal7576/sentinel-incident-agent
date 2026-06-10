@@ -13,6 +13,7 @@ from sentinel.models import (
     BlastRadiusReport,
     ConfidenceLevel,
     Diagnosis,
+    DiagnosisConfidenceBlock,
     Evidence,
     IncidentScenario,
     InvestigationState,
@@ -289,6 +290,7 @@ class SentinelOrchestrator:
             next_step += 1
 
         self._transition(state, StateName.TRIAGE)
+        self._load_triage_memory_hints(state)
         triage_plan = self._plan(state, "Establish affected services, severity, and time window")
         triage_payloads = [
             observability_payload(state, primary_service),
@@ -301,6 +303,7 @@ class SentinelOrchestrator:
             self._tool_step(state, offset, f"Triage with {tool_name}", tool_name, payload)
 
         self._transition(state, StateName.EVIDENCE_COLLECTION)
+        self._load_service_context(state, primary_service)
         evidence_plan = self._plan(state, "Collect observability and repository evidence")
         evidence_payloads = [
             observability_payload(state, primary_service),
@@ -547,6 +550,7 @@ class SentinelOrchestrator:
         ]:
             self._invoke_tool(state, tool_name, payload)
         self._add_step(state, len(state.plan_steps) + 1, "Draft post-mortem and follow-up", "Facts, inferences, action item, runbook update, and Slack draft were produced.")
+        self._remember_incident(state)
         state.status = InvestigationStatus.COMPLETED
         self._checkpoint(state)
         return state
@@ -625,6 +629,7 @@ class SentinelOrchestrator:
             next_step += 1
 
         self._transition(state, StateName.TRIAGE)
+        self._load_triage_memory_hints(state)
         triage_results = {}
         for tool_name in self._model_ordered_required_tools(
             state,
@@ -651,6 +656,7 @@ class SentinelOrchestrator:
         db_logs = triage_results["observe.check_db_slow_queries"]
 
         self._transition(state, StateName.EVIDENCE_COLLECTION)
+        self._load_service_context(state, primary_service)
         for tool_name in self._model_ordered_required_tools(
             state,
             "Collect broader live evidence to rule out adjacent causes before remediation",
@@ -820,20 +826,26 @@ class SentinelOrchestrator:
             self._tool_step(state, index, f"Watch acknowledgement with {tool_name}", tool_name, {"service": "checkout-service"})
 
         self._transition(state, StateName.TRIAGE)
+        self._load_triage_memory_hints(state)
         for index, tool_name in enumerate(self._plan(state, "Triage Watch anomaly"), start=2):
             self._tool_step(state, index, f"Watch triage with {tool_name}", tool_name, {"service": "checkout-service"})
 
         self._transition(state, StateName.EVIDENCE_COLLECTION)
+        self._load_service_context(state, "checkout-service")
         for index, tool_name in enumerate(self._plan(state, "Collect Watch evidence"), start=5):
             self._tool_step(state, index, f"Watch evidence with {tool_name}", tool_name, {"service": "checkout-service"})
 
         self._transition(state, StateName.CORRELATION)
         self._invoke_tool(state, "observe.check_uptime_history", {"service": "checkout-service"})
-        state.diagnosis = Diagnosis(
-            summary="Watch observed checkout error rate trending up before alert threshold.",
-            confidence=ConfidenceLevel.MEDIUM,
-            evidence=state.evidence,
-            evidence_gaps=["Watch has no incident powers and cannot execute remediation."],
+        state.diagnosis = self._with_confidence_block(
+            state,
+            Diagnosis(
+                summary="Watch observed checkout error rate trending up before alert threshold.",
+                confidence=ConfidenceLevel.MEDIUM,
+                evidence=state.evidence,
+                evidence_gaps=["Watch has no incident powers and cannot execute remediation."],
+            ),
+            top_alternative_hypothesis="A transient checkout dependency spike rather than a durable incident.",
         )
         self._add_step(state, 8, "Correlate Watch evidence", state.diagnosis.summary)
 
@@ -1076,22 +1088,31 @@ class SentinelOrchestrator:
                 gaps.append("Prometheus did not return a real /slow-query latency sample.")
             if not loki_ok:
                 gaps.append("Loki did not return a slow-query log mentioning the missing orders.user_id index.")
-            return Diagnosis(
-                summary="Insufficient confidence: real Prometheus and Loki evidence did not both prove the missing-index incident.",
-                confidence=ConfidenceLevel.INSUFFICIENT,
-                evidence=state.evidence,
-                evidence_gaps=gaps,
+            return self._with_confidence_block(
+                state,
+                Diagnosis(
+                    summary="Insufficient confidence: real Prometheus and Loki evidence did not both prove the missing-index incident.",
+                    confidence=ConfidenceLevel.INSUFFICIENT,
+                    evidence=state.evidence,
+                    evidence_gaps=gaps,
+                ),
+                top_alternative_hypothesis="The latency spike may be caused by external load, network delay, or another datastore bottleneck.",
             )
+        assert latest_seconds is not None
         duration_ms = latest_seconds * 1000
-        return Diagnosis(
-            summary=(
-                "Real /slow-query incident: Prometheus recorded "
-                f"{duration_ms:.1f}ms latency and Loki logs show SELECT * FROM orders "
-                "WHERE user_id = ? using a sequential scan because orders.user_id has no index. "
-                "Root cause: missing SQLite index orders.user_id."
+        return self._with_confidence_block(
+            state,
+            Diagnosis(
+                summary=(
+                    "Real /slow-query incident: Prometheus recorded "
+                    f"{duration_ms:.1f}ms latency and Loki logs show SELECT * FROM orders "
+                    "WHERE user_id = ? using a sequential scan because orders.user_id has no index. "
+                    "Root cause: missing SQLite index orders.user_id."
+                ),
+                confidence=ConfidenceLevel.HIGH,
+                evidence=state.evidence,
             ),
-            confidence=ConfidenceLevel.HIGH,
-            evidence=state.evidence,
+            top_alternative_hypothesis="The service is saturated independently of the missing SQLite index.",
         )
 
     def _collect_artifacts_from_result(self, state: InvestigationState, data: dict[str, Any]) -> None:
@@ -1234,39 +1255,54 @@ class SentinelOrchestrator:
             for call in self.store.list_tool_calls(state.id)
         )
         if failed_trace:
-            return Diagnosis(
-                summary="Insufficient confidence because trace evidence is unavailable.",
-                confidence=ConfidenceLevel.INSUFFICIENT,
-                evidence=state.evidence,
-                evidence_gaps=["observe.get_distributed_traces unavailable; collect trace evidence next."],
+            return self._with_confidence_block(
+                state,
+                Diagnosis(
+                    summary="Insufficient confidence because trace evidence is unavailable.",
+                    confidence=ConfidenceLevel.INSUFFICIENT,
+                    evidence=state.evidence,
+                    evidence_gaps=["observe.get_distributed_traces unavailable; collect trace evidence next."],
+                ),
+                top_alternative_hypothesis="A downstream dependency or trace-local bottleneck could explain the symptoms.",
             )
         if state.scenario_name == "live":
             source = _live_change_artifact(state)
             if not source:
-                return Diagnosis(
-                    summary="Insufficient confidence because no live change artifact was found for the incident window.",
-                    confidence=ConfidenceLevel.INSUFFICIENT,
-                    evidence=state.evidence,
-                    evidence_gaps=[
-                        "Collect a recent deployment, commit, or pull request artifact before proposing rollback.",
-                    ],
+                return self._with_confidence_block(
+                    state,
+                    Diagnosis(
+                        summary="Insufficient confidence because no live change artifact was found for the incident window.",
+                        confidence=ConfidenceLevel.INSUFFICIENT,
+                        evidence=state.evidence,
+                        evidence_gaps=[
+                            "Collect a recent deployment, commit, or pull request artifact before proposing rollback.",
+                        ],
+                    ),
+                    top_alternative_hypothesis="The degradation is operational rather than deployment-related.",
                 )
-            pr = state.artifacts.get("pull_request")
             title = state.artifacts.get("pull_request_title")
             title_part = f" ({title})" if title else ""
-            return Diagnosis(
-                summary=f"Live evidence correlates {primary_source(source, title_part)} with {state.service_priority[0] if state.service_priority else 'the affected service'} degradation.",
-                confidence=ConfidenceLevel.MEDIUM,
-                evidence=state.evidence,
+            return self._with_confidence_block(
+                state,
+                Diagnosis(
+                    summary=f"Live evidence correlates {primary_source(source, title_part)} with {state.service_priority[0] if state.service_priority else 'the affected service'} degradation.",
+                    confidence=ConfidenceLevel.MEDIUM,
+                    evidence=state.evidence,
+                ),
+                top_alternative_hypothesis="The recent change is coincidental and the incident is driven by traffic, dependency, or infrastructure pressure.",
             )
-        return Diagnosis(
-            summary=(
-                "PR #847 by @alice added SELECT * FROM orders WHERE user_id = ? "
-                "without an index on orders.user_id, causing sequential scans. "
-                "Query time: 4ms \u2192 2.3s (575x)."
+        return self._with_confidence_block(
+            state,
+            Diagnosis(
+                summary=(
+                    "PR #847 by @alice added SELECT * FROM orders WHERE user_id = ? "
+                    "without an index on orders.user_id, causing sequential scans. "
+                    "Query time: 4ms \u2192 2.3s (575x)."
+                ),
+                confidence=ConfidenceLevel.HIGH,
+                evidence=state.evidence,
             ),
-            confidence=ConfidenceLevel.HIGH,
-            evidence=state.evidence,
+            top_alternative_hypothesis="The latency spike is caused by resource saturation rather than the changed query path.",
         )
 
     def _reconcile_evidence(
@@ -1299,12 +1335,76 @@ class SentinelOrchestrator:
                 f"{blast_report.affected_users} in checkout payment authorization. "
                 "Confirmed missing index: orders.user_id."
             )
-        return Diagnosis(
-            summary=summary,
-            confidence=confidence,
-            evidence=state.evidence,
-            evidence_gaps=gaps,
+        return self._with_confidence_block(
+            state,
+            Diagnosis(
+                summary=summary,
+                confidence=confidence,
+                evidence=state.evidence,
+                evidence_gaps=gaps,
+            ),
+            top_alternative_hypothesis="A shared dependency, network path, or infrastructure rollout is the primary cause.",
         )
+
+    def _with_confidence_block(
+        self,
+        state: InvestigationState,
+        diagnosis: Diagnosis,
+        *,
+        top_alternative_hypothesis: str,
+    ) -> Diagnosis:
+        unconfirmed = self._failed_tool_uncertainty_notes(state)
+        evidence_gaps = list(dict.fromkeys([*diagnosis.evidence_gaps, *unconfirmed]))
+        supporting = [
+            evidence.claim
+            for evidence in diagnosis.evidence
+            if not evidence.claim.startswith("evidence gap:")
+        ][:5]
+        conflicting = list(
+            dict.fromkeys(
+                [
+                    *diagnosis.conflicts,
+                    *evidence_gaps,
+                    *[
+                        evidence.claim
+                        for evidence in diagnosis.evidence
+                        if evidence.claim.startswith("evidence gap:")
+                    ],
+                ]
+            )
+        )
+        block = DiagnosisConfidenceBlock(
+            confidence_percent=_confidence_percent(diagnosis.confidence),
+            supporting_signals=supporting or ["No supporting signal was confirmed."],
+            conflicting_signals=conflicting,
+            top_alternative_hypothesis=top_alternative_hypothesis,
+            unconfirmed_hypotheses=unconfirmed,
+        )
+        return diagnosis.model_copy(
+            update={
+                "evidence_gaps": evidence_gaps,
+                "confidence_block": block,
+            }
+        )
+
+    def _failed_tool_uncertainty_notes(self, state: InvestigationState) -> list[str]:
+        calls = state.tool_calls
+        if not calls:
+            try:
+                calls = self.store.list_tool_calls(state.id)
+            except Exception:
+                calls = []
+        notes: list[str] = []
+        for call in calls:
+            if call.success:
+                continue
+            reason = call.error_message or call.error_kind or "tool failed without detail"
+            hypothesis = _unconfirmed_hypothesis_for_tool(call.tool_name)
+            qualifier = "credential or authorization missing" if _looks_like_missing_credential(call.error_kind, reason) else reason
+            notes.append(
+                f"Unconfirmed hypothesis: {hypothesis}; {call.tool_name} could not confirm it because {qualifier}."
+            )
+        return list(dict.fromkeys(notes))
 
     def _build_recommendation(self, state: InvestigationState) -> Recommendation:
         primary_service = state.service_priority[0] if state.service_priority else "payment-service"
@@ -1347,57 +1447,75 @@ class SentinelOrchestrator:
         primary_service = state.service_priority[0] if state.service_priority else "payment-service"
         remediation_idem = f"{state.id}:remediation:rollback-{primary_service}"
         if not state.approval_request or not state.approval_command:
-            state.remediation_result = RemediationResult(
-                action="rollback",
-                affected_service=primary_service,
-                status="refused",
-                idempotency_key=remediation_idem,
-                message="No valid human approval was present.",
+            self._set_remediation_result(
+                state,
+                RemediationResult(
+                    action="rollback",
+                    affected_service=primary_service,
+                    status="refused",
+                    idempotency_key=remediation_idem,
+                    message="No valid human approval was present.",
+                ),
             )
             return
         if state.approval_command.request_id != state.approval_request.id:
-            state.remediation_result = RemediationResult(
-                action="rollback",
-                affected_service=primary_service,
-                status="refused",
-                idempotency_key=remediation_idem,
-                message="Approval command did not match the approval request.",
+            self._set_remediation_result(
+                state,
+                RemediationResult(
+                    action="rollback",
+                    affected_service=primary_service,
+                    status="refused",
+                    idempotency_key=remediation_idem,
+                    message="Approval command did not match the approval request.",
+                ),
             )
             return
         if not _approval_slack_notification_confirmed(state):
-            state.remediation_result = RemediationResult(
-                action="rollback",
-                affected_service=primary_service,
-                status="refused",
-                idempotency_key=remediation_idem,
-                message="Approval request Slack notification was not confirmed for the active approval request.",
+            self._set_remediation_result(
+                state,
+                RemediationResult(
+                    action="rollback",
+                    affected_service=primary_service,
+                    status="refused",
+                    idempotency_key=remediation_idem,
+                    message="Approval request Slack notification was not confirmed for the active approval request.",
+                ),
             )
             return
         if state.approval_command.approver_id not in state.approval_request.approver_ids:
-            state.remediation_result = RemediationResult(
-                action="rollback",
-                affected_service=primary_service,
-                status="refused",
-                idempotency_key=remediation_idem,
-                message="Approval command was not sent by an authorized approver.",
+            self._set_remediation_result(
+                state,
+                RemediationResult(
+                    action="rollback",
+                    affected_service=primary_service,
+                    status="refused",
+                    idempotency_key=remediation_idem,
+                    message="Approval command was not sent by an authorized approver.",
+                ),
             )
             return
         if state.approval_request.expires_at < now_utc():
-            state.remediation_result = RemediationResult(
-                action="rollback",
-                affected_service=primary_service,
-                status="refused",
-                idempotency_key=remediation_idem,
-                message="Approval request expired before remediation execution.",
+            self._set_remediation_result(
+                state,
+                RemediationResult(
+                    action="rollback",
+                    affected_service=primary_service,
+                    status="refused",
+                    idempotency_key=remediation_idem,
+                    message="Approval request expired before remediation execution.",
+                ),
             )
             return
         if state.approval_command.decision != "approve":
-            state.remediation_result = RemediationResult(
-                action="rollback",
-                affected_service=primary_service,
-                status="refused",
-                idempotency_key=remediation_idem,
-                message="Approval command rejected remediation.",
+            self._set_remediation_result(
+                state,
+                RemediationResult(
+                    action="rollback",
+                    affected_service=primary_service,
+                    status="refused",
+                    idempotency_key=remediation_idem,
+                    message="Approval command rejected remediation.",
+                ),
             )
             return
 
@@ -1407,24 +1525,30 @@ class SentinelOrchestrator:
 
         approved_service, target, refusal = _approved_rollback_scope(state)
         if refusal:
-            state.remediation_result = RemediationResult(
-                action="rollback",
-                affected_service=approved_service or primary_service,
-                status="refused",
-                idempotency_key=remediation_idem,
-                message=refusal,
+            self._set_remediation_result(
+                state,
+                RemediationResult(
+                    action="rollback",
+                    affected_service=approved_service or primary_service,
+                    status="refused",
+                    idempotency_key=remediation_idem,
+                    message=refusal,
+                ),
             )
             return
         assert approved_service is not None
 
         idem = f"{state.id}:remediation:rollback-{approved_service}"
         if not self.store.remember_idempotency_key(idem, "remediation", state.id):
-            state.remediation_result = RemediationResult(
-                action="rollback",
-                affected_service=approved_service,
-                status="skipped",
-                idempotency_key=idem,
-                message="Duplicate remediation suppressed by idempotency key.",
+            self._set_remediation_result(
+                state,
+                RemediationResult(
+                    action="rollback",
+                    affected_service=approved_service,
+                    status="skipped",
+                    idempotency_key=idem,
+                    message="Duplicate remediation suppressed by idempotency key.",
+                ),
             )
             return
 
@@ -1459,16 +1583,19 @@ class SentinelOrchestrator:
             rollback_confirmed = rollback.success
             verify_confirmed = verify.success
         remediation_executed = rollback_confirmed and verify_confirmed
-        state.remediation_result = RemediationResult(
-            action="rollback",
-            affected_service=approved_service,
-            status="executed" if remediation_executed else "failed",
-            idempotency_key=idem,
-            evidence=rollback.evidence + verify.evidence,
-            message=(
-                f"Rollback executed and {approved_service} metrics recovered toward baseline."
-                if remediation_executed
-                else f"Rollback did not produce provider-confirming execution and verification evidence for {approved_service}."
+        self._set_remediation_result(
+            state,
+            RemediationResult(
+                action="rollback",
+                affected_service=approved_service,
+                status="executed" if remediation_executed else "failed",
+                idempotency_key=idem,
+                evidence=rollback.evidence + verify.evidence,
+                message=(
+                    f"Rollback executed and {approved_service} metrics recovered toward baseline."
+                    if remediation_executed
+                    else f"Rollback did not produce provider-confirming execution and verification evidence for {approved_service}."
+                ),
             ),
         )
 
@@ -1477,22 +1604,28 @@ class SentinelOrchestrator:
         approved_service, target, refusal = _approved_add_index_scope(state)
         idem = f"{state.id}:remediation:add-index-{approved_service or primary_service}"
         if refusal:
-            state.remediation_result = RemediationResult(
-                action="add_database_index",
-                affected_service=approved_service or primary_service,
-                status="refused",
-                idempotency_key=idem,
-                message=refusal,
+            self._set_remediation_result(
+                state,
+                RemediationResult(
+                    action="add_database_index",
+                    affected_service=approved_service or primary_service,
+                    status="refused",
+                    idempotency_key=idem,
+                    message=refusal,
+                ),
             )
             return
         assert approved_service is not None
         if not self.store.remember_idempotency_key(idem, "remediation", state.id):
-            state.remediation_result = RemediationResult(
-                action="add_database_index",
-                affected_service=approved_service,
-                status="skipped",
-                idempotency_key=idem,
-                message="Duplicate add-index remediation suppressed by idempotency key.",
+            self._set_remediation_result(
+                state,
+                RemediationResult(
+                    action="add_database_index",
+                    affected_service=approved_service,
+                    status="skipped",
+                    idempotency_key=idem,
+                    message="Duplicate add-index remediation suppressed by idempotency key.",
+                ),
             )
             return
         migration = self._invoke_tool(
@@ -1539,18 +1672,25 @@ class SentinelOrchestrator:
             if before_ms is not None and after_ms is not None
             else "real Prometheus latency verification was inconclusive"
         )
-        state.remediation_result = RemediationResult(
-            action="add_database_index",
-            affected_service=approved_service,
-            status="executed" if executed else "failed",
-            idempotency_key=idem,
-            evidence=migration.evidence + verify.evidence,
-            message=(
-                f"Created idx_orders_user_id on orders(user_id); {improvement}."
-                if executed
-                else f"Index migration did not produce complete provider-confirming evidence; {improvement}."
+        self._set_remediation_result(
+            state,
+            RemediationResult(
+                action="add_database_index",
+                affected_service=approved_service,
+                status="executed" if executed else "failed",
+                idempotency_key=idem,
+                evidence=migration.evidence + verify.evidence,
+                message=(
+                    f"Created idx_orders_user_id on orders(user_id); {improvement}."
+                    if executed
+                    else f"Index migration did not produce complete provider-confirming evidence; {improvement}."
+                ),
             ),
         )
+
+    def _set_remediation_result(self, state: InvestigationState, result: RemediationResult) -> None:
+        state.remediation_result = result
+        self._audit(state, "remediation_audit", _remediation_audit_payload(state, result))
 
     def _build_post_mortem(self, state: InvestigationState) -> PostMortem:
         primary_service = state.service_priority[0] if state.service_priority else "payment-service"
@@ -1723,12 +1863,219 @@ class SentinelOrchestrator:
     def _should_spawn_service_investigators(self, state: InvestigationState) -> bool:
         return len(state.affected_services) > 1
 
+    def _load_triage_memory_hints(self, state: InvestigationState) -> None:
+        get_similar = getattr(self.store, "get_similar_incidents", None)
+        hints = (
+            get_similar(
+                {
+                    "incident_id": state.incident_id,
+                    "affected_services": state.affected_services,
+                    "service_priority": state.service_priority,
+                },
+                limit=3,
+            )
+            if callable(get_similar)
+            else []
+        )
+        hints = [hint for hint in hints if isinstance(hint, str) and hint.strip()][:3]
+        state.artifacts["operational_memory_hints"] = hints
+        if hints:
+            self._append_context_summary(
+                state,
+                "Operational memory hints:\n" + "\n".join(f"- {hint}" for hint in hints),
+            )
+        self._audit(
+            state,
+            "operational_memory_hints_loaded",
+            {
+                "state": state.current_state.value,
+                "planner_context_hints": hints,
+                "hint_count": len(hints),
+            },
+        )
+
+    def _load_service_context(self, state: InvestigationState, service_name: str) -> None:
+        get_context = getattr(self.store, "get_service_context", None)
+        context = get_context(service_name) if callable(get_context) else {}
+        contexts = state.artifacts.setdefault("service_context", {})
+        if isinstance(contexts, dict):
+            contexts[service_name] = context
+        summary = _service_context_summary(context)
+        if summary:
+            self._append_context_summary(state, summary)
+        self._audit(
+            state,
+            "service_context_loaded",
+            {
+                "state": state.current_state.value,
+                "service_name": service_name,
+                "service_context": context,
+            },
+        )
+
+    def _remember_incident(self, state: InvestigationState) -> None:
+        remember = getattr(self.store, "remember_incident", None)
+        if not callable(remember):
+            return
+        fingerprint = _incident_fingerprint(state)
+        remember(fingerprint)
+        self._audit(
+            state,
+            "incident_fingerprint_remembered",
+            {
+                "state": state.current_state.value,
+                "fingerprint": fingerprint,
+            },
+        )
+
+    def _append_context_summary(self, state: InvestigationState, addition: str) -> None:
+        addition = addition.strip()
+        if not addition:
+            return
+        state.context_summary = (
+            f"{state.context_summary}\n{addition}"
+            if state.context_summary
+            else addition
+        )
+
 
 def _flatten_evidence(groups) -> list[Evidence]:
     flattened: list[Evidence] = []
     for group in groups:
         flattened.extend(group)
     return flattened
+
+
+def _confidence_percent(confidence: ConfidenceLevel) -> int:
+    return {
+        ConfidenceLevel.HIGH: 92,
+        ConfidenceLevel.MEDIUM: 68,
+        ConfidenceLevel.LOW: 42,
+        ConfidenceLevel.INSUFFICIENT: 15,
+    }[confidence]
+
+
+def _unconfirmed_hypothesis_for_tool(tool_name: str) -> str:
+    if tool_name.startswith("observe."):
+        return "observability evidence may point to a competing operational cause"
+    if tool_name.startswith("repo."):
+        return "a deployment, commit, or code-change artifact may be the causal trigger"
+    if tool_name.startswith("infra."):
+        return "infrastructure state may confirm or block the proposed remediation"
+    if tool_name.startswith("comms."):
+        return "incident ownership or human approval context may change the response path"
+    return "an unclassified signal may change the diagnosis"
+
+
+def _looks_like_missing_credential(error_kind: str | None, reason: str) -> bool:
+    lower = f"{error_kind or ''} {reason}".lower()
+    return any(
+        marker in lower
+        for marker in (
+            "authorization",
+            "credential",
+            "api key",
+            "token",
+            "secret",
+            "unauthorized",
+            "forbidden",
+        )
+    )
+
+
+def _remediation_audit_payload(
+    state: InvestigationState,
+    result: RemediationResult,
+) -> dict[str, Any]:
+    approval_request = (
+        state.approval_request.model_dump(mode="json")
+        if state.approval_request
+        else None
+    )
+    approval_command = (
+        state.approval_command.model_dump(mode="json")
+        if state.approval_command
+        else None
+    )
+    remediation = state.approval_request.remediation if state.approval_request else None
+    return {
+        "schema_version": "remediation_audit.v1",
+        "approval_request": approval_request,
+        "authorizer": {
+            "approver_id": state.approval_command.approver_id if state.approval_command else None,
+            "decision": state.approval_command.decision if state.approval_command else None,
+            "approval_command": approval_command,
+        },
+        "scope": {
+            "affected_service": result.affected_service,
+            "remediation_type": remediation.remediation_type if remediation else result.action,
+            "requested_command": remediation.command if remediation else None,
+            "approved_target": remediation.rollback_target if remediation else None,
+        },
+        "action": {
+            "name": result.action,
+            "status": result.status,
+            "idempotency_key": result.idempotency_key,
+            "message": result.message,
+        },
+        "verification_result": {
+            "status": result.status,
+            "verified": result.status == "executed",
+            "evidence_count": len(result.evidence),
+            "evidence": [evidence.model_dump(mode="json") for evidence in result.evidence],
+        },
+        "timestamp": now_utc().isoformat(),
+    }
+
+
+def _incident_fingerprint(state: InvestigationState) -> dict[str, Any]:
+    service_name = state.service_priority[0] if state.service_priority else "unknown-service"
+    return {
+        "investigation_id": state.id,
+        "incident_id": state.incident_id,
+        "scenario_name": state.scenario_name,
+        "service_name": service_name,
+        "affected_services": list(state.affected_services),
+        "summary": state.post_mortem.summary if state.post_mortem else "",
+        "root_cause": state.diagnosis.summary if state.diagnosis else "",
+        "confidence": state.diagnosis.confidence.value if state.diagnosis else None,
+        "confidence_percent": (
+            state.diagnosis.confidence_block.confidence_percent
+            if state.diagnosis
+            else None
+        ),
+        "remediation": (
+            state.remediation_result.model_dump(mode="json")
+            if state.remediation_result
+            else None
+        ),
+        "timestamp": now_utc().isoformat(),
+    }
+
+
+def _service_context_summary(context: Any) -> str:
+    if not isinstance(context, dict):
+        return ""
+    service_name = context.get("service_name") or "service"
+    parts: list[str] = []
+    profile = context.get("profile")
+    if isinstance(profile, dict) and profile.get("last_summary"):
+        parts.append(f"last incident summary: {profile['last_summary']}")
+    remediations = context.get("approved_remediations")
+    if isinstance(remediations, list) and remediations:
+        latest = remediations[0]
+        if isinstance(latest, dict):
+            action = latest.get("action") or latest.get("message")
+            if action:
+                parts.append(f"approved remediation: {action}")
+    runbooks = context.get("runbook_snippets")
+    if isinstance(runbooks, list) and runbooks:
+        latest_runbook = runbooks[0]
+        if isinstance(latest_runbook, dict) and latest_runbook.get("title"):
+            parts.append(f"runbook: {latest_runbook['title']}")
+    if not parts:
+        return ""
+    return f"Service context for {service_name}: " + "; ".join(str(part) for part in parts[:3])
 
 
 def _is_slow_query_webhook(payload: dict[str, Any] | None) -> bool:

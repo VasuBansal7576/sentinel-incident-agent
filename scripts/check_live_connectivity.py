@@ -14,9 +14,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from sentinel.connectivity import run_live_connectivity_checks
 from sentinel.errors import redact_sensitive_text
 from sentinel.live_receiver_preflight import (
-    operator_auth_headers as _operator_headers,
     receiver_check_exit_code as _exit_code,
-    response_body as _body,
     run_http_receiver_check as _run_http_receiver_check,
 )
 

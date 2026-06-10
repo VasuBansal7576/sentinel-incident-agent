@@ -5,7 +5,7 @@ services:
       - path: .env
         required: false
     ports:
-      - "8000:8000"
+      - "${SENTINEL_HOST_PORT:-8000}:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -17,6 +17,7 @@ services:
         condition: service_started
     environment:
       DD_API_KEY: ${DD_API_KEY:-}
+      SENTINEL_PROFILE: ${SENTINEL_PROFILE:-free-local}
       DD_APP_KEY: ${DD_APP_KEY:-}
       DATADOG_APP_KEY: ${DATADOG_APP_KEY:-}
       DD_SITE: ${DD_SITE:-datadoghq.com}
@@ -50,6 +51,7 @@ services:
       PAGERDUTY_WEBHOOK_PREVIOUS_SECRET: ${PAGERDUTY_WEBHOOK_PREVIOUS_SECRET:-}
       PAGERDUTY_WEBHOOK_SUBSCRIPTION_ID: ${PAGERDUTY_WEBHOOK_SUBSCRIPTION_ID:-}
       SENTINEL_DEFAULT_SERVICE: ${SENTINEL_DEFAULT_SERVICE:-payment-service}
+      SENTINEL_MCP_ENABLED: ${SENTINEL_MCP_ENABLED:-false}
       SENTINEL_SERVICE_ALIASES: ${SENTINEL_SERVICE_ALIASES:-}
       SENTINEL_APPROVER_ID: ${SENTINEL_APPROVER_ID:-}
       SENTINEL_ENV: ${SENTINEL_ENV:-production}
@@ -78,7 +80,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
       POSTGRES_DB: ${POSTGRES_DB:-sentinel}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - sentinel-postgres:/var/lib/postgresql/data
     healthcheck:
@@ -91,7 +93,7 @@ services:
   redis:
     image: redis:7
     ports:
-      - "6379:6379"
+      - "${REDIS_HOST_PORT:-6379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -106,7 +108,7 @@ services:
       - --storage.tsdb.path=/prometheus
       - --web.enable-lifecycle
     ports:
-      - "9090:9090"
+      - "${PROMETHEUS_HOST_PORT:-9090}:9090"
     volumes:
       - ./configs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./configs/prometheus.rules.yml:/etc/prometheus/prometheus.rules.yml:ro
@@ -116,7 +118,7 @@ services:
     image: grafana/loki:3.2.1
     command: ["-config.file=/etc/loki/local-config.yaml"]
     ports:
-      - "3100:3100"
+      - "${LOKI_HOST_PORT:-3100}:3100"
     volumes:
       - sentinel-loki:/loki
 

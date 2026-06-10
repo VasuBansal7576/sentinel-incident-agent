@@ -37,6 +37,7 @@ def test_compose_passes_live_provider_configuration_into_sentinel_service():
 
     for name in [
         "DD_API_KEY",
+        "SENTINEL_PROFILE",
         "DD_APP_KEY",
         "DATADOG_APP_KEY",
         "DD_SITE",
@@ -98,11 +99,35 @@ def test_compose_keeps_postgres_credentials_configurable():
     assert "SENTINEL_SERVICE_ALIASES=" in env_example
 
 
+def test_compose_host_ports_are_configurable_for_clone_demo():
+    compose = (ROOT / "docker-compose.yml").read_text()
+    env_example = (ROOT / ".env.example").read_text()
+
+    for line in [
+        '"${SENTINEL_HOST_PORT:-8000}:8000"',
+        '"${POSTGRES_HOST_PORT:-5432}:5432"',
+        '"${REDIS_HOST_PORT:-6379}:6379"',
+        '"${PROMETHEUS_HOST_PORT:-9090}:9090"',
+        '"${LOKI_HOST_PORT:-3100}:3100"',
+    ]:
+        assert line in compose
+
+    for key in [
+        "SENTINEL_HOST_PORT=8000",
+        "POSTGRES_HOST_PORT=5432",
+        "REDIS_HOST_PORT=6379",
+        "PROMETHEUS_HOST_PORT=9090",
+        "LOKI_HOST_PORT=3100",
+    ]:
+        assert key in env_example
+
+
 def test_env_example_documents_live_demo_and_e2e_gate_variables():
     env_example = (ROOT / ".env.example").read_text()
 
     for name in [
         "SENTINEL_ENV",
+        "SENTINEL_PROFILE",
         "SENTINEL_BASE_URL",
         "SENTINEL_LIVE_RECEIVER_URL",
         "SENTINEL_APPROVER_ID",

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from sentinel.profiles import apply_selected_profile_defaults
 
 DATADOG_ALLOWED_SITES = frozenset(
     {
@@ -85,9 +86,12 @@ class SentinelSettings:
     approver_id: str | None
     service_aliases: dict[str, str]
     environment: str
+    profile: str = "free-local"
+    mcp_enabled: bool = False
 
     @classmethod
     def from_env(cls) -> "SentinelSettings":
+        profile = apply_selected_profile_defaults()
         return cls(
             datadog_api_key=_env_optional_text("DD_API_KEY"),
             datadog_app_key=_env_optional_text("DD_APP_KEY") or _env_optional_text("DATADOG_APP_KEY"),
@@ -134,6 +138,8 @@ class SentinelSettings:
             approver_id=_env_optional_text("SENTINEL_APPROVER_ID"),
             service_aliases=_service_aliases_from_env(_env_optional_text("SENTINEL_SERVICE_ALIASES")),
             environment=_env_text("SENTINEL_ENV", "production"),
+            profile=profile.name,
+            mcp_enabled=_env_bool("SENTINEL_MCP_ENABLED", False),
         )
 
     def missing_live_credentials(self) -> list[str]:

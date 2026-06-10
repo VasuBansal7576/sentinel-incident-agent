@@ -10,7 +10,7 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
-from typing import Any, Iterator
+from typing import Any
 from urllib.parse import unquote, urljoin, urlparse
 
 import httpx

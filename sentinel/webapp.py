@@ -100,6 +100,15 @@ class ApprovalCommandRequest(BaseModel):
         )
 
 
+class MCPRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    jsonrpc: str | None = None
+    id: int | str | None = None
+    method: str
+    params: dict[str, Any] | None = None
+
+
 class _UnavailableInvestigationStore:
     def __init__(self, error: Exception):
         self.error = redact_sensitive_text(error, max_length=500)
@@ -198,6 +207,26 @@ def create_app(settings: SentinelSettings | None = None) -> FastAPI:
         _require_operator_auth(settings, request)
         store = _get_app_store(app, settings)
         return run_live_connectivity_checks(settings, store=store).model_dump(mode="json")
+
+    @app.post("/mcp")
+    def mcp_endpoint(payload: MCPRequest, request: Request) -> dict[str, Any]:
+        if not settings.mcp_enabled:
+            raise HTTPException(status_code=404, detail="SENTINEL MCP endpoint is disabled")
+        _require_operator_auth(settings, request)
+        store = _get_app_store(app, settings)
+        try:
+            result = _handle_mcp_request(settings, store, payload)
+        except KeyError as exc:
+            return _mcp_error(payload.id, 404, str(exc))
+        except RuntimeError as exc:
+            return _mcp_error(payload.id, 409, str(exc))
+        except ToolExecutionError as exc:
+            return _mcp_error(payload.id, 503 if exc.retryable else 502, redact_sensitive_text(exc, max_length=500))
+        except HTTPException as exc:
+            raise exc
+        except Exception as exc:
+            return _mcp_error(payload.id, 503, redact_sensitive_text(exc, max_length=500))
+        return {"jsonrpc": "2.0", "id": payload.id, "result": result}
 
     @app.get("/oauth/slack/install")
     def slack_install(request: Request):
@@ -448,6 +477,18 @@ def create_app(settings: SentinelSettings | None = None) -> FastAPI:
         except Exception as exc:
             raise _store_unavailable_exception(exc) from exc
         return _investigation_response(state)
+
+    @app.get("/investigations/{investigation_id}/audit")
+    def investigation_audit(investigation_id: str, request: Request) -> dict[str, Any]:
+        _require_operator_auth(settings, request)
+        store = _get_app_store(app, settings)
+        try:
+            state = store.load_state(investigation_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except Exception as exc:
+            raise _store_unavailable_exception(exc) from exc
+        return _investigation_audit_response(state)
 
     @app.post("/investigations/{investigation_id}/approval")
     def submit_approval(investigation_id: str, command: ApprovalCommandRequest, request: Request) -> dict[str, Any]:
@@ -1016,6 +1057,11 @@ def _investigation_response(state: InvestigationState) -> dict[str, Any]:
         "generic_webhook_received": state.artifacts.get("generic_webhook_received") is True,
         "diagnosis": state.diagnosis.summary if state.diagnosis else None,
         "confidence": state.diagnosis.confidence.value if state.diagnosis else None,
+        "confidence_block": (
+            state.diagnosis.confidence_block.model_dump(mode="json")
+            if state.diagnosis
+            else None
+        ),
         "recommendation": state.recommendation.command if state.recommendation else None,
         "approval_request_id": approval_request_id,
         "approval_slack_notification_request_id": (
@@ -1058,6 +1104,147 @@ def _audit_summary(state: InvestigationState) -> dict[str, Any]:
         "event_count": len(events),
         "latest_event": latest,
         "events": events,
+    }
+
+
+def _investigation_audit_response(state: InvestigationState) -> dict[str, Any]:
+    events = [event.model_dump(mode="json") for event in state.audit_events]
+    remediation_audits = [
+        event["payload"]
+        for event in events
+        if event.get("event_type") == "remediation_audit"
+        and isinstance(event.get("payload"), dict)
+        and event["payload"].get("schema_version") == "remediation_audit.v1"
+    ]
+    return {
+        "investigation_id": state.id,
+        "incident_id": state.incident_id,
+        "audit_events": events,
+        "remediation_audits": remediation_audits,
+    }
+
+
+def _handle_mcp_request(settings: SentinelSettings, store: Any, payload: MCPRequest) -> dict[str, Any]:
+    method = payload.method
+    params = payload.params or {}
+    if method in {"list_tools", "tools/list"}:
+        return {"tools": _mcp_tool_definitions()}
+    if method == "tools/call":
+        name = _required_mcp_text(params.get("name"), "name")
+        arguments = params.get("arguments")
+        if not isinstance(arguments, dict):
+            arguments = {}
+        return _call_mcp_tool(settings, store, name, arguments)
+    if method in _MCP_TOOL_NAMES:
+        return _call_mcp_tool(settings, store, method, params)
+    raise RuntimeError(f"Unsupported MCP method: {method}")
+
+
+def _call_mcp_tool(settings: SentinelSettings, store: Any, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    if name == "list_tools":
+        return {"tools": _mcp_tool_definitions()}
+    if name == "get_investigation":
+        investigation_id = _required_mcp_text(arguments.get("investigation_id"), "investigation_id")
+        state = store.load_state(investigation_id)
+        return _investigation_response(state)
+    if name == "approve_investigation":
+        investigation_id = _required_mcp_text(arguments.get("investigation_id"), "investigation_id")
+        command = ApprovalCommandRequest(
+            request_id=_required_mcp_text(arguments.get("request_id"), "request_id"),
+            approver_id=_required_mcp_text(arguments.get("approver_id"), "approver_id"),
+            decision=arguments.get("decision", "approve"),
+            idempotency_key=arguments.get("idempotency_key"),
+        ).to_command(investigation_id)
+        state = _resume_live_investigation_with_approval(
+            settings,
+            investigation_id,
+            command,
+            store=store,
+        )
+        return _investigation_response(state)
+    if name == "search_memory":
+        service_name = _required_mcp_text(
+            arguments.get("service_name") or arguments.get("query") or settings.default_service,
+            "service_name",
+        )
+        limit = arguments.get("limit", 3)
+        limit = limit if isinstance(limit, int) and limit > 0 else 3
+        get_similar = getattr(store, "get_similar_incidents", None)
+        get_context = getattr(store, "get_service_context", None)
+        hints = (
+            get_similar({"affected_services": [service_name]}, limit=min(limit, 3))
+            if callable(get_similar)
+            else []
+        )
+        context = get_context(service_name) if callable(get_context) else {}
+        return {
+            "service_name": service_name,
+            "hints": hints,
+            "service_context": context,
+        }
+    raise RuntimeError(f"Unsupported MCP tool: {name}")
+
+
+def _mcp_tool_definitions() -> list[dict[str, Any]]:
+    return [
+        {
+            "name": "get_investigation",
+            "description": "Return the same investigation payload as GET /investigations/{id}.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"investigation_id": {"type": "string"}},
+                "required": ["investigation_id"],
+            },
+        },
+        {
+            "name": "approve_investigation",
+            "description": "Submit the same structured approval command as POST /investigations/{id}/approval.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "investigation_id": {"type": "string"},
+                    "request_id": {"type": "string"},
+                    "approver_id": {"type": "string"},
+                    "decision": {"type": "string", "enum": ["approve", "reject"]},
+                    "idempotency_key": {"type": "string"},
+                },
+                "required": ["investigation_id", "request_id", "approver_id"],
+            },
+        },
+        {
+            "name": "search_memory",
+            "description": "Search operational memory hints and service context for a service.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "service_name": {"type": "string"},
+                    "query": {"type": "string"},
+                    "limit": {"type": "integer"},
+                },
+            },
+        },
+        {
+            "name": "list_tools",
+            "description": "List SENTINEL MCP tools.",
+            "inputSchema": {"type": "object", "properties": {}},
+        },
+    ]
+
+
+_MCP_TOOL_NAMES = {tool["name"] for tool in _mcp_tool_definitions()}
+
+
+def _required_mcp_text(value: Any, name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise RuntimeError(f"MCP argument {name} is required")
+    return value.strip()
+
+
+def _mcp_error(request_id: int | str | None, code: int, message: str) -> dict[str, Any]:
+    return {
+        "jsonrpc": "2.0",
+        "id": request_id,
+        "error": {"code": code, "message": message},
     }
 
 
@@ -1610,9 +1797,9 @@ def _pagerduty_service_labels(service: Any) -> list[str]:
         return []
     labels: list[str] = []
     for key in ("summary", "name", "id"):
-        label = _text(service.get(key))
-        if label and label not in labels:
-            labels.append(label)
+        service_label = _text(service.get(key))
+        if service_label and service_label not in labels:
+            labels.append(service_label)
     return labels
 
 

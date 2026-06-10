@@ -246,7 +246,7 @@ class SubagentLauncher:
         self.store = store
 
     def bind_spawn_tool(self) -> None:
-        self.registry.tools["infra.spawn_service_investigator"] = ServiceInvestigatorSpawnTool(self)
+        self.registry.tools["infra.spawn_service_investigator"] = ServiceInvestigatorSpawnTool(self)  # type: ignore[assignment]
 
     def service_investigator(self, investigation_id: str, service_name: str) -> ServiceIncidentReport:
         context = self._context(investigation_id, "service_investigator", service_name)
